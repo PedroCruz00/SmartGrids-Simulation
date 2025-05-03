@@ -1,0 +1,31 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Estilos globales adicionales */
+html,
+body {
+  @apply h-full;
+}
+
+body {
+  @apply bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100;
+}
+
+#root {
+  @apply h-full;
+}
+
+/* Personalizaciones específicas para la aplicación */
+.simulation-card {
+  @apply bg-white dark:bg-gray-800 rounded-lg shadow-md transition-all duration-300;
+}
+
+.simulation-card:hover {
+  @apply shadow-lg;
+}
+
+/* Estilos para los tooltips del gráfico de red */
+.tooltip {
+  @apply absolute bg-white p-2 rounded shadow-lg text-sm z-10 pointer-events-none dark:bg-gray-800 dark:text-white;
+}
