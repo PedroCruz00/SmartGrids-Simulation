@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from models import SimulationParams, SimulationResult
 from simulation import simulate_demand
 import logging
@@ -32,3 +33,8 @@ def run_simulation(params: SimulationParams):
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/")
+def root():
+    # Redireccionar a la documentación automática
+    return RedirectResponse(url="/docs")
