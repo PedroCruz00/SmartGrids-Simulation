@@ -14,12 +14,17 @@ const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
  * @param {number} params.homes - Número de hogares
  * @param {number} params.businesses - Número de comercios
  * @param {number} params.industries - Número de industrias
- * @param {number} params.simulationHours - Horas a simular
- * @param {string} params.strategy - Estrategia ('fixed' o 'demand_response')
+ * @param {number} params.simulation_hours - Horas a simular
+ * @param {string} params.strategy - Estrategia ('fixed', 'demand_response', 'smart_grid')
+ * @param {number} params.monte_carlo_samples - Número de muestras para Monte Carlo
+ * @param {number} params.start_hour - Hora del día para iniciar (0-23)
+ * @param {string} params.day_type - Tipo de día ('weekday', 'weekend')
  * @returns {Promise<Object>} - Resultado de la simulación
  */
 export const runSimulation = async (params) => {
   try {
+    console.log("Enviando parámetros:", params);
+
     const response = await fetch(`${API_URL}/simulate`, {
       method: "POST",
       headers: {
@@ -87,11 +92,22 @@ export const getMockData = () => {
     const drFactor = timeFactor > 1.3 ? 0.8 : 0.95;
     const drDemand = fixedDemand * drFactor;
 
-    return {
+    // Datos para gráfico
+    const entry = {
       hour: i,
       fixed_demand: fixedDemand,
       dr_demand: drDemand,
     };
+
+    // Añadir datos de Monte Carlo si se requieren
+    if (Math.random() > 0.5) {
+      entry.dr_demand_std = drDemand * 0.08; // 8% de variabilidad
+    }
+
+    // Añadir precios
+    entry.price = 0.12 + (timeFactor - 0.5) * 0.08;
+
+    return entry;
   });
 
   // Generar datos de hogares, comercios e industrias
@@ -110,15 +126,28 @@ export const getMockData = () => {
     metrics: {
       peak_demand_fixed: 3800,
       peak_demand_dr: 3040,
+      peak_demand_confidence: 120, // Ejemplo de datos Monte Carlo
       avg_demand_fixed: 2300,
       avg_demand_dr: 1980,
+      avg_demand_confidence: 85,
       emissions_reduction: 450,
+      emissions_reduction_confidence: 35,
       cost_savings: 325.75,
+      monte_carlo_samples: 50, // Indicar que usamos Monte Carlo
     },
     network_data: {
       homes: generateConsumers(50, "home"),
       businesses: generateConsumers(20, "business"),
       industries: generateConsumers(10, "industry"),
+    },
+    // Datos de sistema energético para la estrategia smart_grid
+    energy_system: {
+      price_history: Array.from(
+        { length: 24 },
+        (_, i) => 0.15 + Math.sin(i / 4) * 0.05
+      ),
+      renewable_history: Array.from({ length: 24 }, (_, i) => 0.1 + i * 0.005),
+      storage_history: Array.from({ length: 24 }, (_, i) => 0.05 + i * 0.002),
     },
   };
 };
