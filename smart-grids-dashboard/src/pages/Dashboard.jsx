@@ -53,7 +53,10 @@ export default function Dashboard() {
     // Determinar si se usó Monte Carlo
     const usedMonteCarlo =
       apiResults.monte_carlo_samples && apiResults.monte_carlo_samples > 1;
-
+    if (usedMonteCarlo) {
+      console.log("Simulación Monte Carlo detectada");
+    }
+    
     // Estructura final para el frontend
     return {
       demand_data: hourlyData,
