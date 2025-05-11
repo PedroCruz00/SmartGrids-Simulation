@@ -6,6 +6,7 @@
 html,
 body {
   @apply h-full;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 body {
@@ -28,4 +29,9 @@ body {
 /* Estilos para los tooltips del gráfico de red */
 .tooltip {
   @apply absolute bg-white p-2 rounded shadow-lg text-sm z-10 pointer-events-none dark:bg-gray-800 dark:text-white;
+}
+
+/* Transiciones suaves para el cambio de tema */
+* {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
 }

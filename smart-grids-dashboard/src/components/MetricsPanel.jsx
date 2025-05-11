@@ -10,6 +10,10 @@ export default function MetricsPanel({ data }) {
     avg_demand_dr,
     emissions_reduction,
     cost_savings,
+    monte_carlo_samples,
+    peak_demand_confidence,
+    avg_demand_confidence,
+    emissions_reduction_confidence,
   } = data;
 
   // Calcular el porcentaje de reducción de pico
@@ -20,10 +24,18 @@ export default function MetricsPanel({ data }) {
   const avgReduction =
     ((avg_demand_fixed - avg_demand_dr) / avg_demand_fixed) * 100;
 
+  // Verificar si hay estadísticas de Monte Carlo
+  const hasMonteCarlo = monte_carlo_samples > 1;
+
   return (
     <div>
       <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
         Resultados de la Simulación
+        {hasMonteCarlo && (
+          <span className="ml-2 text-sm font-normal text-blue-500">
+            (Monte Carlo: {monte_carlo_samples} muestras)
+          </span>
+        )}
       </h2>
 
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
@@ -45,6 +57,11 @@ export default function MetricsPanel({ data }) {
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-300">
                 Con respuesta a la demanda
+                {hasMonteCarlo && peak_demand_confidence && (
+                  <span className="ml-1 text-blue-500">
+                    ±{peak_demand_confidence.toFixed(1)}
+                  </span>
+                )}
               </p>
             </div>
             <div className="text-right">
@@ -76,6 +93,11 @@ export default function MetricsPanel({ data }) {
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-300">
                 Con respuesta a la demanda
+                {hasMonteCarlo && avg_demand_confidence && (
+                  <span className="ml-1 text-blue-500">
+                    ±{avg_demand_confidence.toFixed(1)}
+                  </span>
+                )}
               </p>
             </div>
             <div className="text-right">
@@ -100,6 +122,11 @@ export default function MetricsPanel({ data }) {
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-300">
               Ahorro estimado
+              {hasMonteCarlo && emissions_reduction_confidence && (
+                <span className="ml-1 text-blue-500">
+                  ±{emissions_reduction_confidence.toFixed(1)}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -119,6 +146,20 @@ export default function MetricsPanel({ data }) {
           </div>
         </div>
       </div>
+
+      {/* Si hay datos de Monte Carlo, mostrar información adicional */}
+      {hasMonteCarlo && (
+        <div className="mt-6 bg-blue-50 p-4 rounded-lg dark:bg-blue-900">
+          <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+            Información Monte Carlo
+          </h3>
+          <p className="text-sm text-blue-700 dark:text-blue-300">
+            La simulación fue ejecutada {monte_carlo_samples} veces con
+            diferentes condiciones iniciales. Los intervalos de confianza (±) se
+            muestran al 95% de nivel de confianza.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
