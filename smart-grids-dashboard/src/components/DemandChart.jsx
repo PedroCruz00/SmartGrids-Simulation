@@ -78,10 +78,26 @@ export default function DemandChart({ data, showConfidence = false }) {
                   position: "insideLeft",
                 }}
               />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                label={{
+                  value: "Precio ($/kWh)",
+                  angle: -90,
+                  position: "insideRight",
+                }}
+              />
               <Tooltip
-                formatter={(value) => [`${value.toFixed(2)} kW`, ""]}
+                formatter={(value, name) => {
+                  if (typeof value === "number") {
+                    const unit = name === "Precio ($/kWh)" ? " $/kWh" : " kW";
+                    return [`${value.toFixed(2)}${unit}`, name];
+                  }
+                  return [value, name];
+                }}
                 labelFormatter={(hour) => `Hora ${hour}`}
               />
+
               <Legend />
               <Line
                 type="monotone"
@@ -153,9 +169,16 @@ export default function DemandChart({ data, showConfidence = false }) {
                 }}
               />
               <Tooltip
-                formatter={(value) => [`${value.toFixed(2)} kW`, ""]}
+                formatter={(value, name) => {
+                  if (typeof value === "number") {
+                    const unit = name === "Precio ($/kWh)" ? " $/kWh" : " kW";
+                    return [`${value.toFixed(2)}${unit}`, name];
+                  }
+                  return [value, name];
+                }}
                 labelFormatter={(hour) => `Hora ${hour}`}
               />
+
               <Legend />
               <Line
                 type="monotone"

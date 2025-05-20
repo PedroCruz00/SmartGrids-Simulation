@@ -62,19 +62,17 @@ def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'wee
     """
     Genera una secuencia de estados de demanda usando una cadena de Markov mejorada
     con dependencia temporal (hora del día y tipo de día)
-    
+
     Args:
         steps: Número de pasos (horas) a simular
         hour_start: Hora del día para iniciar (0-23)
         day_type: 'weekday' o 'weekend'
-        
+
     Returns:
         Lista de estados y multiplicadores de demanda correspondientes
     """
-    # Estados más granulares de demanda
     states = ['very_low', 'low', 'medium_low', 'medium', 'medium_high', 'high', 'peak']
-    
-    # Multiplicadores de demanda para cada estado
+
     demand_multipliers = {
         'very_low': 0.4,
         'low': 0.6,
@@ -84,16 +82,8 @@ def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'wee
         'high': 1.5,
         'peak': 1.8
     }
-    
-    # Matrices de transición diferentes según periodo del día
-    # Estas matrices están diseñadas para reflejar patrones realistas:
-    # - Por la mañana (6-9), la demanda tiende a aumentar (personas despiertan, industrias arrancan)
-    # - Durante el mediodía (11-14), demanda media-alta (actividad comercial, aires acondicionados)
-    # - Por la tarde/noche (17-21), pico de demanda (personas vuelven a casa)
-    # - Por la noche (22-5), demanda baja y estable
-    
-    # Estas son matrices de transición diseñadas heurísticamente
-    night_matrix = {  # 22-5h: demanda mayormente baja y estable
+
+    night_matrix = {
         'very_low': [0.70, 0.20, 0.10, 0.00, 0.00, 0.00, 0.00],
         'low':      [0.20, 0.60, 0.15, 0.05, 0.00, 0.00, 0.00],
         'medium_low':[0.10, 0.20, 0.60, 0.10, 0.00, 0.00, 0.00],
@@ -102,8 +92,8 @@ def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'wee
         'high':     [0.10, 0.10, 0.10, 0.20, 0.20, 0.30, 0.00],
         'peak':     [0.10, 0.20, 0.20, 0.20, 0.15, 0.10, 0.05]
     }
-    
-    morning_matrix = {  # 6-10h: tendencia a aumentar
+
+    morning_matrix = {
         'very_low': [0.20, 0.50, 0.20, 0.10, 0.00, 0.00, 0.00],
         'low':      [0.05, 0.30, 0.40, 0.20, 0.05, 0.00, 0.00],
         'medium_low':[0.00, 0.10, 0.30, 0.40, 0.15, 0.05, 0.00],
@@ -112,8 +102,8 @@ def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'wee
         'high':     [0.00, 0.00, 0.05, 0.15, 0.30, 0.40, 0.10],
         'peak':     [0.00, 0.00, 0.00, 0.10, 0.20, 0.30, 0.40]
     }
-    
-    midday_matrix = {  # 11-16h: niveles medios-altos
+
+    midday_matrix = {
         'very_low': [0.10, 0.30, 0.40, 0.20, 0.00, 0.00, 0.00],
         'low':      [0.05, 0.20, 0.40, 0.25, 0.10, 0.00, 0.00],
         'medium_low':[0.00, 0.10, 0.30, 0.40, 0.15, 0.05, 0.00],
@@ -122,8 +112,8 @@ def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'wee
         'high':     [0.00, 0.00, 0.05, 0.15, 0.30, 0.40, 0.10],
         'peak':     [0.00, 0.00, 0.00, 0.10, 0.30, 0.40, 0.20]
     }
-    
-    evening_matrix = {  # 17-21h: pico de demanda
+
+    evening_matrix = {
         'very_low': [0.05, 0.20, 0.30, 0.30, 0.15, 0.00, 0.00],
         'low':      [0.00, 0.10, 0.20, 0.40, 0.20, 0.10, 0.00],
         'medium_low':[0.00, 0.05, 0.15, 0.30, 0.30, 0.15, 0.05],
@@ -132,17 +122,24 @@ def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'wee
         'high':     [0.00, 0.00, 0.00, 0.10, 0.20, 0.40, 0.30],
         'peak':     [0.00, 0.00, 0.00, 0.05, 0.15, 0.30, 0.50]
     }
-    
-    # Matrices diferentes para días de semana vs fin de semana
+
     if day_type == 'weekend':
-        # Ajustar matrices para reflejar patrones de fin de semana
-        # En general, la demanda comienza más tarde y los picos son menores
-        morning_matrix = {k: [0.7*v[0]+0.3*v[1], 0.3*v[0]+0.5*v[1]+0.2*v[2], 0.3*v[1]+0.5*v[2]+0.2*v[3], 
-                             0.3*v[2]+0.4*v[3]+0.3*v[4], 0.3*v[3]+0.4*v[4]+0.3*v[5], 
-                             0.3*v[4]+0.5*v[5]+0.2*v[6], 0.5*v[5]+0.5*v[6]] 
-                         for k, v in morning_matrix.items()}
-    
-    # Mapeo de horas a matrices de transición
+        new_morning_matrix = {}
+        for k, v in morning_matrix.items():
+            adjusted = [
+                0.7*v[0] + 0.3*v[1],
+                0.3*v[0] + 0.5*v[1] + 0.2*v[2],
+                0.3*v[1] + 0.5*v[2] + 0.2*v[3],
+                0.3*v[2] + 0.4*v[3] + 0.3*v[4],
+                0.3*v[3] + 0.4*v[4] + 0.3*v[5],
+                0.3*v[4] + 0.5*v[5] + 0.2*v[6],
+                0.5*v[5] + 0.5*v[6]
+            ]
+            total = sum(adjusted)
+            normalized = [x / total for x in adjusted]
+            new_morning_matrix[k] = normalized
+        morning_matrix = new_morning_matrix
+
     hour_to_matrix = {
         0: night_matrix, 1: night_matrix, 2: night_matrix, 3: night_matrix, 4: night_matrix, 5: night_matrix,
         6: morning_matrix, 7: morning_matrix, 8: morning_matrix, 9: morning_matrix, 10: morning_matrix,
@@ -150,16 +147,14 @@ def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'wee
         17: evening_matrix, 18: evening_matrix, 19: evening_matrix, 20: evening_matrix, 21: evening_matrix,
         22: night_matrix, 23: night_matrix
     }
-    
-    # Inicializar en un estado apropiado según la hora
+
     hour_based_states = {
         "night": ['very_low', 'low', 'medium_low'],
         "morning": ['low', 'medium_low', 'medium'],
         "midday": ['medium_low', 'medium', 'medium_high'],
         "evening": ['medium', 'medium_high', 'high']
     }
-    
-    # Determinar periodo del día inicial
+
     if hour_start < 6:
         period = "night"
     elif hour_start < 11:
@@ -168,24 +163,25 @@ def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'wee
         period = "midday"
     else:
         period = "evening"
-    
-    # Elegir un estado inicial aleatorio apropiado para la hora del día
+
     current = np.random.choice(hour_based_states[period])
-    
+
     state_results = []
     multiplier_results = []
-    
+
     for i in range(steps):
         current_hour = (hour_start + i) % 24
         current_matrix = hour_to_matrix[current_hour]
-        
-        # Transición al siguiente estado
-        current = np.random.choice(states, p=current_matrix[current])
+
+        probs = current_matrix[current]
+        if not np.isclose(sum(probs), 1.0, atol=1e-6):
+            raise ValueError(f"Probabilities for state '{current}' at hour {current_hour} do not sum to 1: {sum(probs)}")
+
+        current = np.random.choice(states, p=probs)
         state_results.append(current)
         multiplier_results.append(demand_multipliers[current])
-    
-    return state_results, multiplier_results
 
+    return state_results, multiplier_results
 def calculate_consumer_elasticity(consumer_type: str, price: float, state: str, base_price: float = 0.15) -> float:
     """
     Calcula la elasticidad del consumidor basada en el tipo, precio y estado de la demanda
@@ -401,19 +397,16 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
 def simulate_demand(params, strategy):
     """
     Ejecuta una simulación completa con Monte Carlo si es necesario
-    
     Args:
-        params: Parámetros de simulación
-        strategy: Estrategia de gestión
-        
+    params: Parámetros de simulación
+    strategy: Estrategia de gestión
     Returns:
-        Resultados de la simulación
+    Resultados de la simulación
     """
     # Si se solicita Monte Carlo y más de 1 muestra
     if params.montecarlo_samples > 1:
         # Inicializar sistema energético compartido para todas las simulaciones
         energy_system = EnergySystem()
-        
         # Ejecutar múltiples simulaciones
         results = []
         for i in range(params.montecarlo_samples):
@@ -421,18 +414,16 @@ def simulate_demand(params, strategy):
             seed = 42 + i
             hour_start = (8 + i % 24) % 24  # Variar hora de inicio (8am por defecto)
             day_type = 'weekday' if i % 7 < 5 else 'weekend'  # Incluir fines de semana
-            
             # Ejecutar simulación individual y guardar resultados
             result = simulate_demand_single_run(
                 params, strategy, energy_system, seed, hour_start, day_type
             )
             results.append(result)
         
-        # Calcular estadísticas
+        # Calcular estadísticas - REALMENTE corregido sin asteriscos en axis
         time_series_mean = np.mean([r["time_series"] for r in results], axis=0).tolist()
         time_series_std = np.std([r["time_series"] for r in results], axis=0).tolist()
         price_series_mean = np.mean([r["price_series"] for r in results], axis=0).tolist()
-        
         peak_demands = [r["peak_demand"] for r in results]
         avg_demands = [r["average_demand"] for r in results]
         emission_reductions = [r["reduced_emissions"] for r in results]
@@ -440,13 +431,10 @@ def simulate_demand(params, strategy):
         # Calcular intervalos de confianza (95%)
         confidence_level = 1.96  # 95% confianza
         sample_size = params.montecarlo_samples
-        
         peak_std = np.std(peak_demands)
         peak_error = confidence_level * peak_std / np.sqrt(sample_size)
-        
         avg_std = np.std(avg_demands)
         avg_error = confidence_level * avg_std / np.sqrt(sample_size)
-        
         emission_std = np.std(emission_reductions)
         emission_error = confidence_level * emission_std / np.sqrt(sample_size)
         
@@ -466,7 +454,6 @@ def simulate_demand(params, strategy):
             "reduced_emissions_confidence": emission_error,
             "monte_carlo_samples": params.montecarlo_samples
         }
-        
         # Incluir estado final del sistema energético
         if strategy == 'smart_grid':
             result["final_energy_system"] = {
@@ -474,8 +461,14 @@ def simulate_demand(params, strategy):
                 "renewable_adoption": energy_system.renewable_adoption,
                 "storage_capacity": energy_system.storage_capacity
             }
-        
         return result
     else:
         # Ejecutar una sola simulación sin Monte Carlo
         return simulate_demand_single_run(params, strategy)
+# Normaliza cada fila del conjunto de matrices - Corregido sin asteriscos
+def normalize_transition_matrix(matrix):
+    matrix = np.array(matrix, dtype=np.float64)
+    row_sums = matrix.sum(axis=1)
+    # Evita división por cero
+    row_sums[row_sums == 0] = 1
+    return matrix / row_sums[:, np.newaxis]

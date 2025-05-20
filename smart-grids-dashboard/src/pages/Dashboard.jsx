@@ -56,7 +56,7 @@ export default function Dashboard() {
     if (usedMonteCarlo) {
       console.log("Simulación Monte Carlo detectada");
     }
-    
+
     // Estructura final para el frontend
     return {
       demand_data: hourlyData,
@@ -96,6 +96,7 @@ export default function Dashboard() {
       if (currentMode === "api") {
         // Usar API real
         const results = await runSimulation(params);
+        console.log(results); // Verificar lo que devuelve la API
         const processedResults = processApiResults(results);
         setSimulationResults(processedResults);
       } else {
@@ -106,8 +107,8 @@ export default function Dashboard() {
         }, 1000); // Simular delay de API
       }
     } catch (err) {
+      console.error("Error al ejecutar la simulación:", err);
       setError("Error al ejecutar la simulación: " + err.message);
-      console.error(err);
     } finally {
       setLoading(false);
     }
