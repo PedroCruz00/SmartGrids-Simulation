@@ -19,6 +19,9 @@ export default function Dashboard() {
     const hasFixedData =
       apiResults.fixed_demand && apiResults.fixed_demand.time_series;
 
+    // Determinar estrategia actual
+    const currentStrategy = apiResults.strategy || "fixed";
+
     // Construir estructura para el gráfico
     const hourlyData = apiResults.time_series.map((value, i) => {
       const entry = {
@@ -31,7 +34,6 @@ export default function Dashboard() {
         entry.fixed_demand = apiResults.fixed_demand.time_series[i];
       } else {
         // Si no tenemos datos fixed, usar una estimación basada en el valor actual
-        // Esto es útil solo para la estrategia "fixed" donde no hay comparación
         entry.fixed_demand =
           apiResults.strategy === "fixed" ? value : value * 1.15;
       }
@@ -85,36 +87,80 @@ export default function Dashboard() {
         : [],
     };
 
-    // Construir métricas para el panel
+    // Asegurar que los valores necesarios para los cálculos estén definidos
+    const avgDemand =
+      typeof apiResults.average_demand === "number"
+        ? apiResults.average_demand
+        : 0;
+    const hours = typeof apiResults.hours === "number" ? apiResults.hours : 24;
+
+    // Calcular métricas adicionales con manejo seguro
+    const totalEnergyConsumption = avgDemand * hours;
+
+    // Calcular precio promedio con validación
+    let averagePrice = 0.15; // Valor por defecto
+    if (
+      apiResults.price_series &&
+      Array.isArray(apiResults.price_series) &&
+      apiResults.price_series.length > 0
+    ) {
+      const validPrices = apiResults.price_series.filter(
+        (price) => typeof price === "number"
+      );
+      if (validPrices.length > 0) {
+        const sumPrices = validPrices.reduce((sum, price) => sum + price, 0);
+        averagePrice = sumPrices / validPrices.length;
+      }
+    }
+
+    const energyCost = totalEnergyConsumption * averagePrice;
+
+    // Estimar emisiones totales basadas en un factor de emisión estándar
+    const emissionFactor = 0.5; // kg CO2 por kWh (valor típico para una matriz energética mixta)
+    const totalEmissions = totalEnergyConsumption * emissionFactor;
+
+    // Construir métricas para el panel con valores seguros
     const metrics = {
-      peak_demand_fixed: hasFixedData
-        ? apiResults.fixed_demand.peak_demand
-        : apiResults.peak_demand * 1.15,
-      peak_demand_dr: apiResults.peak_demand,
-      peak_demand_confidence: apiResults.peak_demand_confidence,
-      avg_demand_fixed: hasFixedData
-        ? apiResults.fixed_demand.average_demand
-        : apiResults.average_demand * 1.12,
-      avg_demand_dr: apiResults.average_demand,
-      avg_demand_confidence: apiResults.average_demand_confidence,
-      emissions_reduction: apiResults.reduced_emissions || 0,
-      emissions_reduction_confidence: apiResults.reduced_emissions_confidence,
-      cost_savings: apiResults.cost_savings || 0,
-      monte_carlo_samples: apiResults.monte_carlo_samples || 1,
+      peak_demand_fixed:
+        hasFixedData && typeof apiResults.fixed_demand.peak_demand === "number"
+          ? apiResults.fixed_demand.peak_demand
+          : typeof apiResults.peak_demand === "number"
+          ? apiResults.peak_demand * 1.15
+          : 0,
+      peak_demand_dr:
+        typeof apiResults.peak_demand === "number" ? apiResults.peak_demand : 0,
+      peak_demand_confidence: apiResults.peak_demand_confidence || 0,
+      avg_demand_fixed:
+        hasFixedData &&
+        typeof apiResults.fixed_demand.average_demand === "number"
+          ? apiResults.fixed_demand.average_demand
+          : avgDemand * 1.12,
+      avg_demand_dr: avgDemand,
+      avg_demand_confidence: apiResults.avg_demand_confidence || 0,
+      emissions_reduction:
+        typeof apiResults.reduced_emissions === "number"
+          ? apiResults.reduced_emissions
+          : 0,
+      emissions_total: isNaN(totalEmissions) ? 0 : totalEmissions,
+      emissions_reduction_confidence:
+        apiResults.reduced_emissions_confidence || 0,
+      cost_savings:
+        typeof apiResults.cost_savings === "number"
+          ? apiResults.cost_savings
+          : 0,
+      energy_cost: isNaN(energyCost) ? avgDemand * hours * 0.15 : energyCost,
+      monte_carlo_samples:
+        typeof apiResults.monte_carlo_samples === "number"
+          ? apiResults.monte_carlo_samples
+          : 1,
+      strategy: currentStrategy,
     };
 
-    // Asegurar valores no nulos para evitar errores en los componentes
-    Object.keys(metrics).forEach((key) => {
-      if (metrics[key] === undefined || metrics[key] === null) {
-        if (key.includes("fixed")) {
-          metrics[key] = metrics[key.replace("fixed", "dr")] * 1.15;
-        } else if (key.includes("confidence")) {
-          metrics[key] = 0;
-        } else {
-          metrics[key] = 0;
-        }
-      }
-    });
+    // Calcular valores derivados adicionales
+    metrics.energy_cost_estimate = metrics.avg_demand_dr * hours * 0.15;
+    metrics.potential_savings = metrics.energy_cost * 0.12;
+
+    console.log("Métricas procesadas:", metrics);
 
     return {
       demand_data: hourlyData,
