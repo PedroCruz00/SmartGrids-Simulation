@@ -24,6 +24,21 @@ class MonteCarloStats(BaseModel):
     std_dev: float
     confidence_interval: float
 
+class ConsumerNode(BaseModel):
+    id: str
+    type: str
+    consumption: float
+
+class NetworkData(BaseModel):
+    homes: List[ConsumerNode]
+    businesses: List[ConsumerNode]
+    industries: List[ConsumerNode]
+
+class FixedDemandData(BaseModel):
+    peak_demand: float
+    average_demand: float
+    time_series: List[float]
+
 class SimulationResult(BaseModel):
     time_series: List[float]
     time_series_std: Optional[List[float]] = None
@@ -37,5 +52,8 @@ class SimulationResult(BaseModel):
     reduced_emissions: float
     reduced_emissions_std: Optional[float] = None
     reduced_emissions_confidence: Optional[float] = None
+    cost_savings: Optional[float] = None
     monte_carlo_samples: Optional[int] = None
+    fixed_demand: Optional[FixedDemandData] = None
+    network_data: Optional[NetworkData] = None
     final_energy_system: Optional[Dict] = None

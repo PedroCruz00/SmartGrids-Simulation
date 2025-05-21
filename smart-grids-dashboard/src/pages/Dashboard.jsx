@@ -4,13 +4,12 @@ import MetricsPanel from "../components/MetricsPanel";
 import DemandChart from "../components/DemandChart";
 import NodeNetwork from "../components/NodeNetwork";
 import Loader from "../components/Loader";
-import { runSimulation, getMockData } from "../api/SimulationService";
+import { runSimulation } from "../api/SimulationService";
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [simulationResults, setSimulationResults] = useState(null);
   const [error, setError] = useState(null);
-  const [currentMode, setCurrentMode] = useState("mock"); // "api" o "mock"
 
   // Función para procesar los datos recibidos del backend
   const processApiResults = (apiResults) => {
@@ -21,6 +20,11 @@ export default function Dashboard() {
         hour: i,
         dr_demand: value,
       };
+
+      // Añadir datos fixed si están disponibles
+      if (apiResults.fixed_demand && apiResults.fixed_demand.time_series) {
+        entry.fixed_demand = apiResults.fixed_demand.time_series[i];
+      }
 
       // Añadir desviación estándar si está disponible
       if (apiResults.time_series_std) {
@@ -35,56 +39,35 @@ export default function Dashboard() {
       return entry;
     });
 
-    // Generar datos de red (aún con datos de ejemplo porque el backend no los proporciona)
-    const generateConsumers = (count, type, baseFactor = 1) => {
-      const baseConsumption =
-        type === "home"
-          ? 5 * baseFactor
-          : type === "business"
-          ? 20 * baseFactor
-          : 100 * baseFactor;
-
-      return Array.from({ length: count }, (_, i) => ({
-        id: `${type}-${i}`,
-        consumption: baseConsumption + Math.random() * baseConsumption * 0.5,
-      }));
+    // Usar los datos de red proporcionados por el backend
+    const networkData = apiResults.network_data || {
+      homes: [],
+      businesses: [],
+      industries: [],
     };
-
-    // Determinar si se usó Monte Carlo
-    const usedMonteCarlo =
-      apiResults.monte_carlo_samples && apiResults.monte_carlo_samples > 1;
-    if (usedMonteCarlo) {
-      console.log("Simulación Monte Carlo detectada");
-    }
 
     // Estructura final para el frontend
     return {
       demand_data: hourlyData,
       metrics: {
-        peak_demand_fixed: apiResults.peak_demand * 1.15, // Estimación aproximada para comparación
+        peak_demand_fixed: apiResults.fixed_demand
+          ? apiResults.fixed_demand.peak_demand
+          : apiResults.peak_demand * 1.15, // Estimación si no hay datos fixed
         peak_demand_dr: apiResults.peak_demand,
         peak_demand_confidence: apiResults.peak_demand_confidence,
-        avg_demand_fixed: apiResults.average_demand * 1.12, // Estimación aproximada
+        avg_demand_fixed: apiResults.fixed_demand
+          ? apiResults.fixed_demand.average_demand
+          : apiResults.average_demand * 1.12, // Estimación si no hay datos fixed
         avg_demand_dr: apiResults.average_demand,
         avg_demand_confidence: apiResults.average_demand_confidence,
         emissions_reduction: apiResults.reduced_emissions,
         emissions_reduction_confidence: apiResults.reduced_emissions_confidence,
-        cost_savings: apiResults.reduced_emissions * 0.7, // Estimación de ahorro basada en emisiones
+        cost_savings:
+          apiResults.cost_savings || apiResults.reduced_emissions * 0.7, // Usar valor del backend o estimar
         monte_carlo_samples: apiResults.monte_carlo_samples || 1,
       },
-      network_data: {
-        homes: generateConsumers(apiResults.num_homes || 50, "home"),
-        businesses: generateConsumers(
-          apiResults.num_commercial || 20,
-          "business"
-        ),
-        industries: generateConsumers(
-          apiResults.num_industrial || 10,
-          "industry"
-        ),
-      },
+      network_data: networkData,
       energy_system: apiResults.final_energy_system,
-      raw_api_response: apiResults, // Guardar respuesta raw para depuración
     };
   };
 
@@ -93,19 +76,10 @@ export default function Dashboard() {
     setError(null);
 
     try {
-      if (currentMode === "api") {
-        // Usar API real
-        const results = await runSimulation(params);
-        console.log(results); // Verificar lo que devuelve la API
-        const processedResults = processApiResults(results);
-        setSimulationResults(processedResults);
-      } else {
-        // Usar datos de ejemplo
-        setTimeout(() => {
-          const mockData = getMockData();
-          setSimulationResults(mockData);
-        }, 1000); // Simular delay de API
-      }
+      const results = await runSimulation(params);
+      console.log("Resultados de la API:", results);
+      const processedResults = processApiResults(results);
+      setSimulationResults(processedResults);
     } catch (err) {
       console.error("Error al ejecutar la simulación:", err);
       setError("Error al ejecutar la simulación: " + err.message);
@@ -114,30 +88,18 @@ export default function Dashboard() {
     }
   };
 
-  // Función para cambiar entre API y mock
-  const toggleMode = () => {
-    setCurrentMode(currentMode === "api" ? "mock" : "api");
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <header className="bg-white dark:bg-gray-800 shadow">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Simulación de Respuesta a la Demanda
           </h1>
-
-          {/* Botón para cambiar modo API/Mock */}
-          <button
-            onClick={toggleMode}
-            className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-md dark:bg-blue-900 dark:text-blue-200"
-          >
-            Modo: {currentMode === "api" ? "API Real" : "Datos Ejemplo"}
-          </button>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Resto del código actual del componente... */}
         <div className="px-4 py-6 sm:px-0">
           <SimulationForm onSubmit={handleRunSimulation} />
 
@@ -172,6 +134,7 @@ export default function Dashboard() {
             </div>
           ) : simulationResults ? (
             <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* Resto del código para mostrar resultados... */}
               <div className="bg-white overflow-hidden shadow rounded-lg dark:bg-gray-800">
                 <div className="px-4 py-5 sm:p-6">
                   <MetricsPanel data={simulationResults.metrics} />

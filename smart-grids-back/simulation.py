@@ -541,3 +541,48 @@ def normalize_transition_matrix(matrix):
     # Evita división por cero
     row_sums[row_sums == 0] = 1
     return matrix / row_sums[:, np.newaxis]
+
+def generate_network_data(params):
+    """
+    Genera datos de red para la visualización
+    Args:
+    params: Parámetros de simulación
+    Returns:
+    Datos de red para visualización
+    """
+    homes = []
+    businesses = []
+    industries = []
+    
+    # Generar datos para hogares
+    for i in range(params.num_homes):
+        consumption = np.random.lognormal(mean=1.5, sigma=0.5) * 5  # Distribución lognormal para consumo
+        homes.append({
+            "id": f"home-{i}",
+            "type": "home",
+            "consumption": float(consumption)
+        })
+    
+    # Generar datos para negocios
+    for i in range(params.num_commercial):
+        consumption = np.random.lognormal(mean=2.0, sigma=0.6) * 20  # Mayor consumo para negocios
+        businesses.append({
+            "id": f"business-{i}",
+            "type": "business",
+            "consumption": float(consumption)
+        })
+    
+    # Generar datos para industrias
+    for i in range(params.num_industrial):
+        consumption = np.random.lognormal(mean=3.0, sigma=0.7) * 100  # Mucho mayor para industrias
+        industries.append({
+            "id": f"industry-{i}",
+            "type": "industry",
+            "consumption": float(consumption)
+        })
+    
+    return {
+        "homes": homes,
+        "businesses": businesses,
+        "industries": industries
+    }
