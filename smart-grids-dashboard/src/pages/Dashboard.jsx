@@ -13,20 +13,30 @@ export default function Dashboard() {
 
   // Función para procesar los datos recibidos del backend
   const processApiResults = (apiResults) => {
-    // Construir estructura compatible con el frontend
+    console.log("Procesando resultados:", apiResults);
+
+    // Verificar que tenemos datos de fixed_demand para comparación
+    const hasFixedData =
+      apiResults.fixed_demand && apiResults.fixed_demand.time_series;
+
+    // Construir estructura para el gráfico
     const hourlyData = apiResults.time_series.map((value, i) => {
-      // Crear estructura para el gráfico
       const entry = {
-        hour: i,
+        hour: i % 24, // Asegurar que la hora sea 0-23
         dr_demand: value,
       };
 
-      // Añadir datos fixed si están disponibles
-      if (apiResults.fixed_demand && apiResults.fixed_demand.time_series) {
+      // Añadir datos de consumo fijo para comparación
+      if (hasFixedData) {
         entry.fixed_demand = apiResults.fixed_demand.time_series[i];
+      } else {
+        // Si no tenemos datos fixed, usar una estimación basada en el valor actual
+        // Esto es útil solo para la estrategia "fixed" donde no hay comparación
+        entry.fixed_demand =
+          apiResults.strategy === "fixed" ? value : value * 1.15;
       }
 
-      // Añadir desviación estándar si está disponible
+      // Añadir desviación estándar si está disponible (Monte Carlo)
       if (apiResults.time_series_std) {
         entry.dr_demand_std = apiResults.time_series_std[i];
       }
@@ -39,34 +49,77 @@ export default function Dashboard() {
       return entry;
     });
 
-    // Usar los datos de red proporcionados por el backend
+    // Verificar que tenemos datos de red
     const networkData = apiResults.network_data || {
       homes: [],
       businesses: [],
       industries: [],
     };
 
-    // Estructura final para el frontend
+    // Verificar que cada componente de la red tiene el formato correcto
+    const validatedNetworkData = {
+      homes: networkData.homes
+        ? networkData.homes.map((home) => ({
+            id: home.id || `home-${Math.random().toString(36).substr(2, 9)}`,
+            type: "home",
+            consumption: home.consumption || 5,
+          }))
+        : [],
+      businesses: networkData.businesses
+        ? networkData.businesses.map((business) => ({
+            id:
+              business.id ||
+              `business-${Math.random().toString(36).substr(2, 9)}`,
+            type: "business",
+            consumption: business.consumption || 20,
+          }))
+        : [],
+      industries: networkData.industries
+        ? networkData.industries.map((industry) => ({
+            id:
+              industry.id ||
+              `industry-${Math.random().toString(36).substr(2, 9)}`,
+            type: "industry",
+            consumption: industry.consumption || 100,
+          }))
+        : [],
+    };
+
+    // Construir métricas para el panel
+    const metrics = {
+      peak_demand_fixed: hasFixedData
+        ? apiResults.fixed_demand.peak_demand
+        : apiResults.peak_demand * 1.15,
+      peak_demand_dr: apiResults.peak_demand,
+      peak_demand_confidence: apiResults.peak_demand_confidence,
+      avg_demand_fixed: hasFixedData
+        ? apiResults.fixed_demand.average_demand
+        : apiResults.average_demand * 1.12,
+      avg_demand_dr: apiResults.average_demand,
+      avg_demand_confidence: apiResults.average_demand_confidence,
+      emissions_reduction: apiResults.reduced_emissions || 0,
+      emissions_reduction_confidence: apiResults.reduced_emissions_confidence,
+      cost_savings: apiResults.cost_savings || 0,
+      monte_carlo_samples: apiResults.monte_carlo_samples || 1,
+    };
+
+    // Asegurar valores no nulos para evitar errores en los componentes
+    Object.keys(metrics).forEach((key) => {
+      if (metrics[key] === undefined || metrics[key] === null) {
+        if (key.includes("fixed")) {
+          metrics[key] = metrics[key.replace("fixed", "dr")] * 1.15;
+        } else if (key.includes("confidence")) {
+          metrics[key] = 0;
+        } else {
+          metrics[key] = 0;
+        }
+      }
+    });
+
     return {
       demand_data: hourlyData,
-      metrics: {
-        peak_demand_fixed: apiResults.fixed_demand
-          ? apiResults.fixed_demand.peak_demand
-          : apiResults.peak_demand * 1.15, // Estimación si no hay datos fixed
-        peak_demand_dr: apiResults.peak_demand,
-        peak_demand_confidence: apiResults.peak_demand_confidence,
-        avg_demand_fixed: apiResults.fixed_demand
-          ? apiResults.fixed_demand.average_demand
-          : apiResults.average_demand * 1.12, // Estimación si no hay datos fixed
-        avg_demand_dr: apiResults.average_demand,
-        avg_demand_confidence: apiResults.average_demand_confidence,
-        emissions_reduction: apiResults.reduced_emissions,
-        emissions_reduction_confidence: apiResults.reduced_emissions_confidence,
-        cost_savings:
-          apiResults.cost_savings || apiResults.reduced_emissions * 0.7, // Usar valor del backend o estimar
-        monte_carlo_samples: apiResults.monte_carlo_samples || 1,
-      },
-      network_data: networkData,
+      metrics: metrics,
+      network_data: validatedNetworkData,
       energy_system: apiResults.final_energy_system,
     };
   };
@@ -123,6 +176,59 @@ export default function Dashboard() {
                   <p className="text-sm text-red-700 dark:text-red-300">
                     {error}
                   </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!loading && !simulationResults && (
+            <div className="mt-6 bg-white overflow-hidden shadow rounded-lg dark:bg-gray-800">
+              <div className="px-4 py-5 sm:p-6">
+                <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                  Métodos de Simulación Utilizados
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-blue-50 p-4 rounded-lg dark:bg-blue-900">
+                    <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+                      Monte Carlo
+                    </h3>
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                      Ejecuta múltiples simulaciones con diferentes condiciones
+                      iniciales para obtener distribuciones estadísticas.
+                      Permite cuantificar la incertidumbre en las predicciones y
+                      calcular intervalos de confianza.
+                    </p>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg dark:bg-green-900">
+                    <h3 className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                      Cadenas de Markov
+                    </h3>
+                    <p className="text-sm text-green-700 dark:text-green-300">
+                      Modelan las transiciones entre estados de demanda
+                      energética, capturando la naturaleza estocástica del
+                      consumo a lo largo del tiempo con dependencias temporales.
+                    </p>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg dark:bg-purple-900">
+                    <h3 className="text-sm font-medium text-purple-800 dark:text-purple-200 mb-2">
+                      Dinámica de Sistemas
+                    </h3>
+                    <p className="text-sm text-purple-700 dark:text-purple-300">
+                      Simula las retroalimentaciones entre precio, adopción de
+                      renovables y almacenamiento de energía, modelando cómo
+                      estos factores evolucionan e interactúan con el tiempo.
+                    </p>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg dark:bg-orange-900">
+                    <h3 className="text-sm font-medium text-orange-800 dark:text-orange-200 mb-2">
+                      Eventos Discretos
+                    </h3>
+                    <p className="text-sm text-orange-700 dark:text-orange-300">
+                      El sistema avanza en pasos de tiempo discretos (horas),
+                      actualizando el estado del sistema en cada paso según las
+                      condiciones y reglas definidas.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

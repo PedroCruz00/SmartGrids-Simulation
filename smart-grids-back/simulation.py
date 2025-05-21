@@ -309,7 +309,7 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
         
     Returns:
         Resultados de la simulación
-    """
+    """    
     # Establecer semilla si se proporciona
     if seed is not None:
         np.random.seed(seed)
@@ -344,10 +344,10 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
         
         # Aplicar estrategia de respuesta a la demanda
         if strategy == 'fixed':
-            # Sin modificación al consumo
-            home_actual = home_base
-            commercial_actual = commercial_base
-            industrial_actual = industrial_base
+            # Sin modificación al consumo - dejar los valores base
+            home_actual = home_base.copy()  # Usar .copy() para evitar modificaciones inesperadas
+            commercial_actual = commercial_base.copy()
+            industrial_actual = industrial_base.copy()
             current_price = base_price
             
         elif strategy == 'demand_response':
@@ -465,13 +465,50 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
 
 def simulate_demand(params, strategy):
     """
-    Ejecuta una simulación completa con Monte Carlo si es necesario
-    Args:
-    params: Parámetros de simulación
-    strategy: Estrategia de gestión
-    Returns:
-    Resultados de la simulación
+    Ejecuta una simulación completa con los paradigmas seleccionados.
+    
+    Esta función implementa varios conceptos clave de simulación:
+    
+    1. Monte Carlo: Cuando montecarlo_samples > 1, ejecutamos múltiples simulaciones 
+       con diferentes condiciones iniciales para obtener distribuciones estadísticas
+       de los resultados. Esto nos permite estimar la incertidumbre en nuestras predicciones.
+    
+    2. Cadenas de Markov: Utilizadas en generate_markov_states() para modelar las 
+       transiciones entre estados de demanda, representando la naturaleza estocástica
+       del consumo energético a lo largo del tiempo.
+    
+    3. Dinámica de Sistemas: Implementada en la clase EnergySystem, donde modelamos
+       las retroalimentaciones entre precio, adopción de renovables y almacenamiento.
+    
+    4. Simulación de Eventos Discretos: El sistema avanza en pasos de tiempo discretos
+       (horas), actualizando el estado del sistema en cada paso.
     """
+    # Generar datos de red para visualización (siempre, independientemente de la estrategia)
+    network_data = generate_network_data(params)
+    
+    # Primero, ejecutar siempre una simulación con estrategia "fixed" para comparación
+    fixed_params = SimulationParams(
+        num_homes=params.num_homes,
+        num_commercial=params.num_commercial,
+        num_industrial=params.num_industrial,
+        hours=params.hours,
+        montecarlo_samples=1,
+        strategy="fixed",
+        hour_start=params.hour_start,
+        day_type=params.day_type
+    )
+    
+    # Solo necesitamos ejecutar esta simulación si no estamos ya en "fixed"
+    if strategy != "fixed":
+        fixed_result = simulate_demand_single_run(fixed_params, "fixed", EnergySystem())
+        fixed_demand = {
+            "peak_demand": fixed_result["peak_demand"],
+            "average_demand": fixed_result["average_demand"],
+            "time_series": fixed_result["time_series"]
+        }
+    else:
+        fixed_demand = None
+    
     # Si se solicita Monte Carlo y más de 1 muestra
     if params.montecarlo_samples > 1:
         # Inicializar sistema energético compartido para todas las simulaciones
@@ -481,15 +518,18 @@ def simulate_demand(params, strategy):
         for i in range(params.montecarlo_samples):
             # Variamos la semilla y la hora de inicio para cada simulación
             seed = 42 + i
-            hour_start = (8 + i % 24) % 24  # Variar hora de inicio (8am por defecto)
-            day_type = 'weekday' if i % 7 < 5 else 'weekend'  # Incluir fines de semana
+            hour_start = (params.hour_start + i % 24) % 24  # Variar hora de inicio basada en la especificada
+            day_type = params.day_type  # Mantener el tipo de día especificado
+            if i % 7 >= 5:  # Para el 30% de las muestras, cambiar el tipo de día
+                day_type = "weekend" if day_type == "weekday" else "weekday"
+            
             # Ejecutar simulación individual y guardar resultados
             result = simulate_demand_single_run(
                 params, strategy, energy_system, seed, hour_start, day_type
             )
             results.append(result)
         
-        # Calcular estadísticas - REALMENTE corregido sin asteriscos en axis
+        # Calcular estadísticas - sin asteriscos en axis
         time_series_mean = np.mean([r["time_series"] for r in results], axis=0).tolist()
         time_series_std = np.std([r["time_series"] for r in results], axis=0).tolist()
         price_series_mean = np.mean([r["price_series"] for r in results], axis=0).tolist()
@@ -507,6 +547,15 @@ def simulate_demand(params, strategy):
         emission_std = np.std(emission_reductions)
         emission_error = confidence_level * emission_std / np.sqrt(sample_size)
         
+        # Calcular ahorro de costos
+        avg_price = np.mean(price_series_mean)
+        if fixed_demand:
+            avg_fixed_demand = np.mean(fixed_demand["time_series"])
+            avg_dr_demand = np.mean(time_series_mean)
+            cost_savings = (avg_fixed_demand - avg_dr_demand) * params.hours * avg_price
+        else:
+            cost_savings = 0
+        
         # Resultados finales con estadísticas
         result = {
             "time_series": time_series_mean,
@@ -521,7 +570,10 @@ def simulate_demand(params, strategy):
             "reduced_emissions": np.mean(emission_reductions),
             "reduced_emissions_std": emission_std,
             "reduced_emissions_confidence": emission_error,
-            "monte_carlo_samples": params.montecarlo_samples
+            "cost_savings": cost_savings,
+            "monte_carlo_samples": params.montecarlo_samples,
+            "fixed_demand": fixed_demand,
+            "network_data": network_data
         }
         # Incluir estado final del sistema energético
         if strategy == 'smart_grid':
@@ -533,7 +585,24 @@ def simulate_demand(params, strategy):
         return result
     else:
         # Ejecutar una sola simulación sin Monte Carlo
-        return simulate_demand_single_run(params, strategy)
+        single_result = simulate_demand_single_run(params, strategy)
+        
+        # Calcular ahorro de costos basado en precio promedio
+        if fixed_demand and strategy != "fixed":
+            avg_price = np.mean(single_result["price_series"])
+            avg_fixed_demand = np.mean(fixed_demand["time_series"])
+            avg_dr_demand = np.mean(single_result["time_series"])
+            cost_savings = (avg_fixed_demand - avg_dr_demand) * params.hours * avg_price
+        else:
+            cost_savings = 0
+        
+        # Añadir datos adicionales al resultado
+        single_result["cost_savings"] = cost_savings
+        single_result["fixed_demand"] = fixed_demand
+        single_result["network_data"] = network_data
+        
+        return single_result
+
 # Normaliza cada fila del conjunto de matrices - Corregido sin asteriscos
 def normalize_transition_matrix(matrix):
     matrix = np.array(matrix, dtype=np.float64)
@@ -541,6 +610,51 @@ def normalize_transition_matrix(matrix):
     # Evita división por cero
     row_sums[row_sums == 0] = 1
     return matrix / row_sums[:, np.newaxis]
+
+def generate_network_data(params):
+    """
+    Genera datos de red para la visualización
+    Args:
+    params: Parámetros de simulación
+    Returns:
+    Datos de red para visualización
+    """
+    homes = []
+    businesses = []
+    industries = []
+    
+    # Generar datos para hogares
+    for i in range(params.num_homes):
+        consumption = np.random.lognormal(mean=1.5, sigma=0.5) * 5  # Distribución lognormal para consumo
+        homes.append({
+            "id": f"home-{i}",
+            "type": "home",
+            "consumption": float(consumption)
+        })
+    
+    # Generar datos para negocios
+    for i in range(params.num_commercial):
+        consumption = np.random.lognormal(mean=2.0, sigma=0.6) * 20  # Mayor consumo para negocios
+        businesses.append({
+            "id": f"business-{i}",
+            "type": "business",
+            "consumption": float(consumption)
+        })
+    
+    # Generar datos para industrias
+    for i in range(params.num_industrial):
+        consumption = np.random.lognormal(mean=3.0, sigma=0.7) * 100  # Mucho mayor para industrias
+        industries.append({
+            "id": f"industry-{i}",
+            "type": "industry",
+            "consumption": float(consumption)
+        })
+    
+    return {
+        "homes": homes,
+        "businesses": businesses,
+        "industries": industries
+    }
 
 def generate_network_data(params):
     """

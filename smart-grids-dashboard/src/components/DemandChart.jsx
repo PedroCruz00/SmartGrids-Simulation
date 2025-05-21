@@ -1,3 +1,4 @@
+import React from "react";
 import {
   LineChart,
   Line,
@@ -12,6 +13,25 @@ import {
 } from "recharts";
 
 export default function DemandChart({ data, showConfidence = false }) {
+  // Depuración
+  React.useEffect(() => {
+    if (data && data.length) {
+      console.log(
+        "Datos recibidos en DemandChart:",
+        data.length,
+        "puntos. Ejemplo primer punto:",
+        data[0]
+      );
+
+      // Verificar que tenemos valores distintos de cero
+      const hasFixedData = data.some((d) => d.fixed_demand > 0);
+      const hasDrData = data.some((d) => d.dr_demand > 0);
+
+      console.log("¿Tiene datos fixed_demand?", hasFixedData);
+      console.log("¿Tiene datos dr_demand?", hasDrData);
+    }
+  }, [data]);
+
   // Si no hay datos, no renderizar
   if (!data || !data.length) return null;
 

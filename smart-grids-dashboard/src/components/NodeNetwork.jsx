@@ -9,6 +9,21 @@ export default function NodeNetwork({ data }) {
   const tooltipRef = useRef(null);
   const containerRef = useRef(null);
 
+  // Depuración
+  useEffect(() => {
+    if (data) {
+      console.log("Datos de red recibidos:", data);
+      console.log("Número de hogares:", data.homes?.length || 0);
+      console.log("Número de comercios:", data.businesses?.length || 0);
+      console.log("Número de industrias:", data.industries?.length || 0);
+
+      // Verificar estructura de los datos
+      if (data.homes && data.homes.length > 0) {
+        console.log("Ejemplo de hogar:", data.homes[0]);
+      }
+    }
+  }, [data]);
+
   // Colores para los diferentes tipos de nodos con mejor paleta
   const colorScheme = {
     grid: "#1d4ed8", // Azul más saturado
