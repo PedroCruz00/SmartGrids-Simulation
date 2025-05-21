@@ -2,6 +2,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Literal
 import simpy
 from datetime import datetime
+from models import SimulationParams
 
 class EnergySystem:
     """Implementación de dinámica de sistemas para el mercado energético"""

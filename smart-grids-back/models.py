@@ -12,6 +12,7 @@ class SimulationParams(BaseModel):
     day_type: Literal["weekday", "weekend"] = "weekday"
 
     class Config:
+        validate_by_name = True
         allow_population_by_field_name = True
 
 class EnergySystemState(BaseModel):
