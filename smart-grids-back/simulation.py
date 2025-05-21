@@ -57,6 +57,75 @@ class EnergySystem:
         # Las energías renovables tienen 0 emisiones, mientras las no renovables tienen un factor base
         non_renewable_factor = 0.5  # kg CO2/kWh
         return non_renewable_factor * (1 - self.renewable_adoption)
+    
+# Simular consumo base para cada tipo de usuario con distribuciones más realistas
+def generate_base_consumption(num_entities, entity_type, hour_of_day, day_type="weekday", seed=None):
+    """
+    Genera consumos base más realistas utilizando diversas distribuciones estadísticas
+    según el tipo de entidad y hora del día.
+    
+    Args:
+        num_entities: Número de entidades a generar
+        entity_type: 'home', 'business', o 'industry'
+        hour_of_day: Hora del día (0-23)
+        day_type: 'weekday' o 'weekend'
+        seed: Semilla para reproducibilidad
+        
+    Returns:
+        Array de consumos base
+    """
+    if seed is not None:
+        np.random.seed(seed)
+    
+    # Factor según hora del día (mayor consumo en horas pico)
+    is_weekend = day_type == "weekend"
+    hour_factor = 1.0
+    
+    # Mañana: Pico mayor en días laborales
+    if 7 <= hour_of_day <= 9:
+        hour_factor = 1.2 + np.random.normal(0, 0.1) if is_weekend else 1.7 + np.random.normal(0, 0.1)
+    # Mediodía: Similar en ambos
+    elif 12 <= hour_of_day <= 14:
+        hour_factor = 1.3 + np.random.normal(0, 0.1)
+    # Tarde-noche: Pico mayor en días laborales
+    elif 18 <= hour_of_day <= 21:
+        hour_factor = 1.4 + np.random.normal(0, 0.1) if is_weekend else 1.8 + np.random.normal(0, 0.1)
+    # Madrugada: Bajo en ambos
+    elif 0 <= hour_of_day <= 5:
+        hour_factor = 0.6 + np.random.normal(0, 0.05)
+    
+    # Distribuciones específicas según tipo
+    if entity_type == 'home':
+        # Mezcla de distribuciones para simular diferentes tipos de hogares
+        # Distribución bimodal: 70% hogares pequeños, 30% hogares grandes
+        mix = np.random.choice([0, 1], size=num_entities, p=[0.7, 0.3])
+        small_homes = np.random.normal(1.2, 0.25, num_entities) * hour_factor
+        large_homes = np.random.normal(2.5, 0.6, num_entities) * hour_factor
+        return np.where(mix == 0, small_homes, large_homes)
+    
+    elif entity_type == 'business':
+        # Distribución log-normal para negocios
+        # Crea mayor variabilidad con algunos comercios mucho más grandes que otros
+        sigma = 0.8
+        mu = np.log(4.0) - sigma**2/2  # Para que la media sea ~4.0
+        base = np.exp(np.random.normal(mu, sigma, num_entities))
+        # Aplicar límites y factores
+        return np.clip(base * hour_factor, 2.0, 40.0)
+    
+    elif entity_type == 'industry':
+        # Distribución mixta para industrias
+        # Distribución base usando Pareto para industrias con "larga cola"
+        shape = 1.5
+        base = np.random.pareto(shape, num_entities) * 10
+        # Algunas industrias muy grandes (15%)
+        outliers = np.random.choice([0, 1], size=num_entities, p=[0.85, 0.15])
+        outlier_values = np.random.uniform(25, 35, num_entities)
+        base = np.where(outliers == 1, outlier_values, base)
+        # Aplicar factor hora y ajustar rango
+        return np.clip(base * hour_factor, 5.0, 70.0)
+    
+    # Valor por defecto si ninguno coincide
+    return np.random.normal(loc=5.0, scale=1.0, size=num_entities)
 
 def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'weekday'):
     """
@@ -269,9 +338,9 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
         state_multiplier = state_multipliers[h]
         
         # Simular consumo base para cada tipo de usuario
-        home_base = np.random.normal(loc=1.5, scale=0.3, size=params.num_homes)
-        commercial_base = np.random.normal(loc=5.0, scale=1.0, size=params.num_commercial)
-        industrial_base = np.random.normal(loc=10.0, scale=2.0, size=params.num_industrial)
+        home_base = generate_base_consumption(params.num_homes, 'home', h % 24, day_type, seed)
+        commercial_base = generate_base_consumption(params.num_commercial, 'business', h % 24, day_type, seed)
+        industrial_base = generate_base_consumption(params.num_industrial, 'industry', h % 24, day_type, seed)
         
         # Aplicar estrategia de respuesta a la demanda
         if strategy == 'fixed':

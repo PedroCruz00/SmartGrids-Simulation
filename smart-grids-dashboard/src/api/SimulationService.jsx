@@ -74,80 +74,207 @@ export const getSimulationById = async (id) => {
  *
  * @returns {Object} - Datos de ejemplo
  */
-export const getMockData = () => {
-  // Generar datos de hora por hora (24 horas)
-  const hourlyData = Array.from({ length: 24 }, (_, i) => {
-    // Crear patrones realistas de consumo con picos durante mañana y tarde
-    const baseDemand = 2000 + Math.random() * 500;
+export const getMockData = (params = {}) => {
+  // Extraer parámetros o usar valores por defecto
+  const homes = params.homes || 50;
+  const businesses = params.businesses || 20;
+  const industries = params.industries || 10;
+  const hours = params.simulation_hours || 24;
+  const monteCarlo = params.monte_carlo_samples || 1;
+  const strategy = params.strategy || "fixed";
+  const startHour = params.start_hour || 8;
+  const dayType = params.day_type || "weekday";
 
-    // Factor de multiplicación según la hora del día
+  // Usar una semilla pseudoaleatoria basada en parámetros
+  const seed = homes * 1000 + businesses * 100 + industries * 10 + startHour;
+  // Función simple de generación de números pseudoaleatorios
+  const seededRandom = () => {
+    const x = Math.sin(seed + hourlyData.length) * 10000;
+    return x - Math.floor(x);
+  };
+
+  // Generar datos de hora por hora más realistas
+  const hourlyData = Array.from({ length: hours }, (_, i) => {
+    // Calcular hora real según hora de inicio
+    const currentHour = (startHour + i) % 24;
+
+    // Crear patrones realistas según tipo de día y hora
+    const isWeekend = dayType === "weekend";
+
+    // Factor de base para la demanda basado en la hora
+    let baseDemand = 1500 + seededRandom() * 500;
     let timeFactor = 1;
-    if (i >= 7 && i <= 9) timeFactor = 1.5; // Pico de la mañana
-    if (i >= 18 && i <= 21) timeFactor = 1.8; // Pico de la tarde
-    if (i >= 0 && i <= 5) timeFactor = 0.6; // Bajo consumo nocturno
 
-    const fixedDemand = baseDemand * timeFactor;
+    // Patrón de mañana (mayor en días laborales)
+    if (currentHour >= 7 && currentHour <= 9)
+      timeFactor = isWeekend ? 1.2 : 1.7;
+    // Patrón medio día (similar en ambos)
+    else if (currentHour >= 12 && currentHour <= 14) timeFactor = 1.3;
+    // Patrón tarde-noche (mayor en días laborales)
+    else if (currentHour >= 18 && currentHour <= 21)
+      timeFactor = isWeekend ? 1.4 : 1.8;
+    // Horas de madrugada (bajo en ambos)
+    else if (currentHour >= 0 && currentHour <= 5) timeFactor = 0.6;
 
-    // La demanda con DR es menor durante picos y similar en horas valle
-    const drFactor = timeFactor > 1.3 ? 0.8 : 0.95;
+    // Ajustar demanda con tamaño de la red
+    const networkSize = homes * 2 + businesses * 5 + industries * 20;
+    const networkFactor = networkSize / 500; // Normalizar para aproximadamente 500 unidades
+
+    // Calcular demanda según estrategia
+    const fixedDemand = baseDemand * timeFactor * networkFactor;
+
+    // Factores de reducción según estrategia
+    let drFactor;
+    if (strategy === "fixed") {
+      drFactor = 1.0; // Sin reducción
+    } else if (strategy === "demand_response") {
+      // Mayor respuesta en horas pico
+      drFactor = timeFactor > 1.3 ? 0.8 + seededRandom() * 0.1 : 0.95;
+    } else if (strategy === "smart_grid") {
+      // Smart Grid logra mayor reducción
+      drFactor = timeFactor > 1.3 ? 0.7 + seededRandom() * 0.1 : 0.9;
+    }
+
     const drDemand = fixedDemand * drFactor;
 
     // Datos para gráfico
     const entry = {
-      hour: i,
+      hour: currentHour,
       fixed_demand: fixedDemand,
       dr_demand: drDemand,
     };
 
-    // Añadir datos de Monte Carlo si se requieren
-    if (Math.random() > 0.5) {
-      entry.dr_demand_std = drDemand * 0.08; // 8% de variabilidad
+    // Añadir variabilidad según muestras Monte Carlo
+    if (monteCarlo > 1) {
+      // Más muestras = menor variabilidad (más preciso)
+      const variabilityFactor = 0.2 / Math.sqrt(monteCarlo);
+      entry.dr_demand_std = drDemand * variabilityFactor;
     }
 
-    // Añadir precios
+    // Añadir precios que correlacionan con demanda
     entry.price = 0.12 + (timeFactor - 0.5) * 0.08;
 
     return entry;
   });
 
-  // Generar datos de hogares, comercios e industrias
+  // Función mejorada para generar consumidores con distribuciones más realistas
   const generateConsumers = (count, type) => {
-    const baseConsumption =
-      type === "home" ? 5 : type === "business" ? 20 : 100;
+    // Usar seed para consistencia
+    const typeSeed = type === "home" ? 100 : type === "business" ? 200 : 300;
 
-    return Array.from({ length: count }, (_, i) => ({
-      id: `${type}-${i}`,
-      consumption: baseConsumption + Math.random() * baseConsumption * 0.5,
-    }));
+    return Array.from({ length: count }, (_, i) => {
+      // Generar números pseudoaleatorios específicos para cada consumidor
+      const consumerSeed = seed + typeSeed + i;
+      const r1 =
+        Math.sin(consumerSeed) * 10000 -
+        Math.floor(Math.sin(consumerSeed) * 10000);
+      const r2 =
+        Math.sin(consumerSeed * 2) * 10000 -
+        Math.floor(Math.sin(consumerSeed * 2) * 10000);
+
+      let consumption;
+
+      if (type === "home") {
+        // Distribución bimodal para hogares (pequeños y grandes)
+        if (r1 > 0.7) {
+          // Hogares grandes (30%)
+          consumption = 7 + r2 * 5;
+        } else {
+          // Hogares pequeños (70%)
+          consumption = 2 + r2 * 3;
+        }
+      } else if (type === "business") {
+        // Distribución log-normal aproximada para negocios
+        consumption = 10 * Math.exp(r1 * r2 * 2);
+      } else {
+        // Distribución más extrema para industrias
+        if (r1 > 0.85) {
+          // Grandes industrias (15%)
+          consumption = 150 + r2 * 250;
+        } else {
+          // Industrias medianas (85%)
+          consumption = 40 + r2 * 60;
+        }
+      }
+
+      return {
+        id: `${type}-${i}`,
+        consumption: consumption,
+        efficiency: 0.7 + r2 * 0.3, // Factor de eficiencia variable
+      };
+    });
   };
+
+  // Calcular estadísticas basadas en los datos generados
+  const calculateStats = () => {
+    const peakFixed = Math.max(...hourlyData.map((d) => d.fixed_demand));
+    const peakDR = Math.max(...hourlyData.map((d) => d.dr_demand));
+    const avgFixed =
+      hourlyData.reduce((sum, d) => sum + d.fixed_demand, 0) / hours;
+    const avgDR = hourlyData.reduce((sum, d) => sum + d.dr_demand, 0) / hours;
+
+    // Emisiones proporcionales a consumo, pero con factor extra para smart grid
+    const emissionFactor = strategy === "smart_grid" ? 0.8 : 1.0;
+    const emissions = (avgFixed - avgDR) * hours * 0.5 * emissionFactor;
+
+    // Ahorro económico basado en diferencia de consumo y tarifas
+    const avgPrice = hourlyData.reduce((sum, d) => sum + d.price, 0) / hours;
+    const costSavings = (avgFixed - avgDR) * hours * avgPrice;
+
+    return {
+      peak_demand_fixed: peakFixed,
+      peak_demand_dr: peakDR,
+      avg_demand_fixed: avgFixed,
+      avg_demand_dr: avgDR,
+      emissions_reduction: emissions,
+      cost_savings: costSavings,
+      monte_carlo_samples: monteCarlo,
+    };
+  };
+
+  const stats = calculateStats();
+
+  // Añadir intervalos de confianza basados en Monte Carlo
+  if (monteCarlo > 1) {
+    const confidenceFactor = 1.96 / Math.sqrt(monteCarlo); // 95% de confianza
+    stats.peak_demand_confidence =
+      stats.peak_demand_dr * 0.1 * confidenceFactor;
+    stats.avg_demand_confidence = stats.avg_demand_dr * 0.08 * confidenceFactor;
+    stats.emissions_reduction_confidence =
+      stats.emissions_reduction * 0.15 * confidenceFactor;
+  }
 
   return {
     demand_data: hourlyData,
-    metrics: {
-      peak_demand_fixed: 3800,
-      peak_demand_dr: 3040,
-      peak_demand_confidence: 120, // Ejemplo de datos Monte Carlo
-      avg_demand_fixed: 2300,
-      avg_demand_dr: 1980,
-      avg_demand_confidence: 85,
-      emissions_reduction: 450,
-      emissions_reduction_confidence: 35,
-      cost_savings: 325.75,
-      monte_carlo_samples: 50, // Indicar que usamos Monte Carlo
-    },
+    metrics: stats,
     network_data: {
-      homes: generateConsumers(50, "home"),
-      businesses: generateConsumers(20, "business"),
-      industries: generateConsumers(10, "industry"),
+      homes: generateConsumers(homes, "home"),
+      businesses: generateConsumers(businesses, "business"),
+      industries: generateConsumers(industries, "industry"),
     },
-    // Datos de sistema energético para la estrategia smart_grid
-    energy_system: {
-      price_history: Array.from(
-        { length: 24 },
-        (_, i) => 0.15 + Math.sin(i / 4) * 0.05
-      ),
-      renewable_history: Array.from({ length: 24 }, (_, i) => 0.1 + i * 0.005),
-      storage_history: Array.from({ length: 24 }, (_, i) => 0.05 + i * 0.002),
-    },
+    energy_system:
+      strategy === "smart_grid"
+        ? {
+            price_history: Array.from({ length: hours }, (_, i) => {
+              const hour = (startHour + i) % 24;
+              return 0.15 + Math.sin(hour / 4) * 0.05;
+            }),
+            renewable_history: Array.from({ length: hours }, (_, i) => {
+              // Renovables aumentan durante el día
+              const hour = (startHour + i) % 24;
+              return 0.1 + (hour >= 8 && hour <= 16 ? (hour - 8) * 0.01 : 0);
+            }),
+            storage_history: Array.from({ length: hours }, (_, i) => {
+              // Almacenamiento se carga durante baja demanda y se descarga en picos
+              const hour = (startHour + i) % 24;
+              return (
+                0.05 +
+                ((hour >= 1 && hour <= 6) || (hour >= 13 && hour <= 16)
+                  ? 0.05
+                  : 0)
+              );
+            }),
+          }
+        : null,
   };
 };
