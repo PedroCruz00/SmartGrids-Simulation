@@ -5,28 +5,38 @@ export default function NodeNetwork({ data }) {
   const [nodes, setNodes] = useState([]);
   const [links, setLinks] = useState([]);
   const [selectedNode, setSelectedNode] = useState(null);
+  const [energyStats, setEnergyStats] = useState(null);
+  const [layoutMode, setLayoutMode] = useState("radial"); // 'radial', 'sector', o 'force'
   const svgRef = useRef(null);
   const tooltipRef = useRef(null);
   const containerRef = useRef(null);
 
-  // Colores para los diferentes tipos de nodos con mejor paleta
+  // Paleta de colores mejorada con mayor accesibilidad
   const colorScheme = {
-    grid: "#1d4ed8", // Azul más saturado
-    home: "#16a34a", // Verde más vivo
-    business: "#ea580c", // Naranja más cálido
-    industry: "#dc2626", // Rojo más vibrante
-    selected: "#8b5cf6", // Púrpura para nodos seleccionados
+    grid: "#1a56db", // Azul más vibrante
+    home: "#047857", // Verde más rico pero accesible
+    business: "#d97706", // Naranja con mejor contraste
+    industry: "#b91c1c", // Rojo más saturado
+    selected: "#7c3aed", // Púrpura para selección
+    background: "#f9fafb", // Fondo claro
+    gridLines: "#e5e7eb", // Líneas de cuadrícula
+    text: "#111827", // Texto principal
+    textLight: "#6b7280", // Texto secundario
   };
 
   // Configuraciones para la simulación y visualización
   const config = {
     nodePadding: 15,
     baseNodeSize: 8,
-    linkStrength: 0.7,
-    chargeStrength: -400,
-    centerForce: 1,
-    collisionRadius: 1.8,
+    linkStrength: 0.3, // Fuerza reducida para mejor distribución
+    chargeStrength: -300,
+    centerForce: 0.1, // Fuerza central reducida
+    collisionRadius: 2,
     animationDuration: 300,
+    sectorAngle: Math.PI / 8, // Para layout sectorial
+    sectorSpread: 0.8, // Extensión del sector
+    minLinkWidth: 1, // Grosor mínimo para enlaces
+    maxLinkWidth: 5, // Grosor máximo para enlaces
   };
 
   // Actualizar el tamaño del SVG cuando cambie el contenedor
@@ -57,9 +67,93 @@ export default function NodeNetwork({ data }) {
     return () => window.removeEventListener("resize", updateSvgSize);
   }, []);
 
+  // Calcular estadísticas de energía
+  const calculateEnergyStats = (nodeData) => {
+    if (!nodeData || !nodeData.length) return null;
+
+    const stats = {
+      homes: {
+        count: 0,
+        totalConsumption: 0,
+        avgConsumption: 0,
+        maxConsumption: 0,
+      },
+      businesses: {
+        count: 0,
+        totalConsumption: 0,
+        avgConsumption: 0,
+        maxConsumption: 0,
+      },
+      industries: {
+        count: 0,
+        totalConsumption: 0,
+        avgConsumption: 0,
+        maxConsumption: 0,
+      },
+      total: {
+        count: 0,
+        totalConsumption: 0,
+        avgConsumption: 0,
+      },
+    };
+
+    // Mapeo de tipos a categorías
+    const typeToCategory = {
+      home: "homes",
+      business: "businesses",
+      industry: "industries",
+    };
+
+    // Agrupar por tipo y calcular estadísticas
+    nodeData.forEach((node) => {
+      if (node.type === "grid") return;
+
+      // Verificar que el tipo es válido y tiene una categoría correspondiente
+      const category = typeToCategory[node.type];
+      if (!category || !stats[category]) return;
+
+      stats[category].count++;
+      stats[category].totalConsumption += node.consumption || 0;
+      stats[category].maxConsumption = Math.max(
+        stats[category].maxConsumption,
+        node.consumption || 0
+      );
+      stats.total.count++;
+      stats.total.totalConsumption += node.consumption || 0;
+    });
+
+    // Calcular promedios (con protección contra división por cero)
+    stats.homes.avgConsumption = stats.homes.count
+      ? stats.homes.totalConsumption / stats.homes.count
+      : 0;
+
+    stats.businesses.avgConsumption = stats.businesses.count
+      ? stats.businesses.totalConsumption / stats.businesses.count
+      : 0;
+
+    stats.industries.avgConsumption = stats.industries.count
+      ? stats.industries.totalConsumption / stats.industries.count
+      : 0;
+
+    stats.total.avgConsumption = stats.total.count
+      ? stats.total.totalConsumption / stats.total.count
+      : 0;
+
+    return stats;
+  };
+
   // Procesar datos cuando cambian
   useEffect(() => {
     if (!data) return;
+
+    // Verificar que los datos tienen la estructura esperada
+    const validData = {
+      homes: Array.isArray(data.homes) ? data.homes : [],
+      businesses: Array.isArray(data.businesses) ? data.businesses : [],
+      industries: Array.isArray(data.industries) ? data.industries : [],
+    };
+
+    console.log("Datos de red procesados:", validData);
 
     // Preparar los datos para la visualización con categorías más claras
     const networkNodes = [
@@ -68,62 +162,86 @@ export default function NodeNetwork({ data }) {
         id: "grid",
         name: "Red Eléctrica",
         type: "grid",
-        size: config.baseNodeSize * 4,
+        size: config.baseNodeSize * 3.5,
         description: "Centro de distribución de energía",
       },
       // Procesar hogares
-      ...data.homes.map((home, i) => ({
+      ...validData.homes.map((home, i) => ({
         id: `home-${i}`,
         name: `Hogar ${i + 1}`,
         type: "home",
-        consumption: home.consumption,
-        size: config.baseNodeSize + Math.sqrt(home.consumption) * 0.8,
-        description: `Vivienda residencial con consumo de ${home.consumption.toFixed(
-          1
-        )} kW`,
+        consumption: home.consumption || 0,
+        size: config.baseNodeSize + Math.sqrt(home.consumption || 1) * 0.8,
+        description: `Vivienda residencial con consumo de ${(
+          home.consumption || 0
+        ).toFixed(1)} kW`,
       })),
       // Procesar comercios
-      ...data.businesses.map((business, i) => ({
+      ...validData.businesses.map((business, i) => ({
         id: `business-${i}`,
         name: `Comercio ${i + 1}`,
         type: "business",
-        consumption: business.consumption,
-        size: config.baseNodeSize + Math.sqrt(business.consumption) * 0.7,
-        description: `Establecimiento comercial con consumo de ${business.consumption.toFixed(
-          1
-        )} kW`,
+        consumption: business.consumption || 0,
+        size: config.baseNodeSize + Math.sqrt(business.consumption || 1) * 0.7,
+        description: `Establecimiento comercial con consumo de ${(
+          business.consumption || 0
+        ).toFixed(1)} kW`,
       })),
       // Procesar industrias
-      ...data.industries.map((industry, i) => ({
+      ...validData.industries.map((industry, i) => ({
         id: `industry-${i}`,
         name: `Industria ${i + 1}`,
         type: "industry",
-        consumption: industry.consumption,
-        size: config.baseNodeSize + Math.sqrt(industry.consumption) * 0.6,
-        description: `Planta industrial con consumo de ${industry.consumption.toFixed(
-          1
-        )} kW`,
+        consumption: industry.consumption || 0,
+        size: config.baseNodeSize + Math.sqrt(industry.consumption || 1) * 0.6,
+        description: `Planta industrial con consumo de ${(
+          industry.consumption || 0
+        ).toFixed(1)} kW`,
       })),
     ];
 
     // Crear enlaces con grosor proporcionado al consumo de manera más equilibrada
     const networkLinks = networkNodes
       .filter((node) => node.id !== "grid")
-      .map((node) => ({
-        source: "grid",
-        target: node.id,
-        value: node.consumption || 1,
-        width: Math.max(1, Math.sqrt(node.consumption || 1) / 2),
-      }));
+      .map((node) => {
+        // Escalar el ancho del enlace de forma más proporcional al consumo
+        const minConsumption = 1;
+        const maxConsumption = 100;
+        const normalizedConsumption =
+          (node.consumption || minConsumption) / maxConsumption;
+        const width =
+          config.minLinkWidth +
+          normalizedConsumption * (config.maxLinkWidth - config.minLinkWidth);
 
-    setNodes(networkNodes);
-    setLinks(networkLinks);
+        return {
+          source: "grid",
+          target: node.id,
+          value: node.consumption || 1,
+          width: Math.max(
+            config.minLinkWidth,
+            Math.min(config.maxLinkWidth, width)
+          ),
+          type: node.type, // Guardar el tipo para colorear
+        };
+      });
+
+    // Calcular estadísticas de energía y establecer nodos/enlaces
+    try {
+      const energyStatsData = calculateEnergyStats(networkNodes);
+      setEnergyStats(energyStatsData);
+      setNodes(networkNodes);
+      setLinks(networkLinks);
+    } catch (error) {
+      console.error("Error al procesar datos de red:", error);
+      // Inicializar con valores vacíos en caso de error
+      setEnergyStats(null);
+      setNodes([]);
+      setLinks([]);
+    }
   }, [data]);
 
   // Función para determinar la forma según el tipo de nodo
   const getNodeSymbol = (d) => {
-    const base = d3.symbol().size(d.size * 25);
-
     switch (d.type) {
       case "grid":
         return d3
@@ -153,6 +271,112 @@ export default function NodeNetwork({ data }) {
     }
   };
 
+  // Función para posicionar nodos en un layout radial
+  const applyRadialLayout = (nodes, width, height) => {
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // Agrupar nodos por tipo
+    const nodesByType = {
+      grid: nodes.filter((n) => n.type === "grid"),
+      home: nodes.filter((n) => n.type === "home"),
+      business: nodes.filter((n) => n.type === "business"),
+      industry: nodes.filter((n) => n.type === "industry"),
+    };
+
+    // Posicionar el nodo de red en el centro
+    nodesByType.grid.forEach((node) => {
+      node.fx = centerX;
+      node.fy = centerY;
+    });
+
+    // Posicionar cada tipo en su propio anillo
+    const positionNodesInRing = (nodes, radius, startAngle, endAngle) => {
+      nodes.forEach((node, i) => {
+        // Distribuir uniformemente en el círculo
+        const angle = startAngle + (i / nodes.length) * (endAngle - startAngle);
+        // Añadir algo de variación al radio para evitar alineación perfecta
+        const nodeRadius = radius * (0.9 + Math.random() * 0.2);
+
+        // Establecer posición inicial
+        node.x = centerX + nodeRadius * Math.cos(angle);
+        node.y = centerY + nodeRadius * Math.sin(angle);
+      });
+    };
+
+    // Posicionar cada tipo a diferentes distancias y sectores
+    positionNodesInRing(nodesByType.home, 150, 0, 2 * Math.PI);
+    positionNodesInRing(nodesByType.business, 250, 0, 2 * Math.PI);
+    positionNodesInRing(nodesByType.industry, 350, 0, 2 * Math.PI);
+
+    return nodes;
+  };
+
+  // Función para posicionar nodos en un layout sectorial
+  const applySectorLayout = (nodes, width, height) => {
+    const centerX = width / 2;
+    const centerY = height / 2;
+
+    // Agrupar nodos por tipo
+    const nodesByType = {
+      grid: nodes.filter((n) => n.type === "grid"),
+      home: nodes.filter((n) => n.type === "home"),
+      business: nodes.filter((n) => n.type === "business"),
+      industry: nodes.filter((n) => n.type === "industry"),
+    };
+
+    // Posicionar el nodo de red en el centro
+    nodesByType.grid.forEach((node) => {
+      node.fx = centerX;
+      node.fy = centerY;
+    });
+
+    // Asignar sectores específicos para cada tipo
+    const sectors = {
+      home: {
+        startAngle: -Math.PI / 6,
+        endAngle: (Math.PI * 2) / 3,
+        minRadius: 120,
+        maxRadius: 240,
+      },
+      business: {
+        startAngle: (Math.PI * 2) / 3,
+        endAngle: (Math.PI * 4) / 3,
+        minRadius: 120,
+        maxRadius: 240,
+      },
+      industry: {
+        startAngle: (Math.PI * 4) / 3,
+        endAngle: (Math.PI * 11) / 6,
+        minRadius: 120,
+        maxRadius: 240,
+      },
+    };
+
+    // Posicionar nodos por tipo en su sector asignado
+    Object.entries(sectors).forEach(([type, sector]) => {
+      const typeNodes = nodesByType[type];
+
+      typeNodes.forEach((node, i) => {
+        // Distribuir uniformemente en el sector
+        const angle =
+          sector.startAngle +
+          (i / typeNodes.length) * (sector.endAngle - sector.startAngle);
+
+        // Variar el radio dentro del rango min-max, más consumo = más cerca del centro
+        const normalizedIndex = i / (typeNodes.length || 1);
+        const radiusRange = sector.maxRadius - sector.minRadius;
+        const radius = sector.minRadius + normalizedIndex * radiusRange;
+
+        // Establecer posición inicial
+        node.x = centerX + radius * Math.cos(angle);
+        node.y = centerY + radius * Math.sin(angle);
+      });
+    });
+
+    return nodes;
+  };
+
   // Renderizar la visualización cuando cambian nodos o enlaces
   useEffect(() => {
     if (!nodes.length || !links.length || !containerRef.current) return;
@@ -171,39 +395,67 @@ export default function NodeNetwork({ data }) {
       .attr("width", width)
       .attr("height", height)
       .attr("viewBox", `0 0 ${width} ${height}`)
-      .attr("class", "bg-gray-50 rounded-lg shadow-inner")
+      .attr("class", "bg-gray-50 rounded-lg shadow-inner dark:bg-gray-800")
       .attr("ref", svgRef);
 
-    // Agregar un fondo de cuadrícula sutil para mejor orientación
-    const gridSize = 20;
-    svg
-      .append("defs")
+    // Agregar un fondo de cuadrícula sutil con mejor diseño
+    const defs = svg.append("defs");
+
+    // Patrón de cuadrícula mejorado
+    const gridPattern = defs
       .append("pattern")
       .attr("id", "grid")
-      .attr("width", gridSize)
-      .attr("height", gridSize)
-      .attr("patternUnits", "userSpaceOnUse")
+      .attr("width", 30)
+      .attr("height", 30)
+      .attr("patternUnits", "userSpaceOnUse");
+
+    // Líneas horizontales
+    gridPattern
       .append("path")
-      .attr("d", `M ${gridSize} 0 L 0 0 0 ${gridSize}`)
-      .attr("fill", "none")
-      .attr("stroke", "#e5e7eb")
+      .attr("d", "M 0 15 H 30")
+      .attr("stroke", colorScheme.gridLines)
       .attr("stroke-width", 0.5);
 
+    // Líneas verticales
+    gridPattern
+      .append("path")
+      .attr("d", "M 15 0 V 30")
+      .attr("stroke", colorScheme.gridLines)
+      .attr("stroke-width", 0.5);
+
+    // Aplicar el patrón de cuadrícula
     svg
       .append("rect")
       .attr("width", width)
       .attr("height", height)
-      .attr("fill", "url(#grid)");
+      .attr("fill", "url(#grid)")
+      .attr("fill-opacity", 0.5);
 
-    // Crear una simulación de fuerzas más equilibrada
+    // Aplicar layout inicial según el modo seleccionado
+    const processedNodes = [...nodes];
+
+    if (layoutMode === "radial") {
+      applyRadialLayout(processedNodes, width, height);
+    } else if (layoutMode === "sector") {
+      applySectorLayout(processedNodes, width, height);
+    }
+
+    // Crear simulación de fuerzas mejorada
     const simulation = d3
-      .forceSimulation(nodes)
+      .forceSimulation(processedNodes)
       .force(
         "link",
         d3
           .forceLink(links)
           .id((d) => d.id)
-          .distance((d) => 100 + Math.sqrt(d.value) * 10)
+          .distance((d) => {
+            // Distancia basada en el tipo y consumo
+            let baseDist = 100;
+            if (d.target.type === "home") baseDist = 150;
+            if (d.target.type === "business") baseDist = 200;
+            if (d.target.type === "industry") baseDist = 250;
+            return baseDist + Math.sqrt(d.value) * 3;
+          })
           .strength(config.linkStrength)
       )
       .force(
@@ -212,8 +464,9 @@ export default function NodeNetwork({ data }) {
           .forceManyBody()
           .strength((d) =>
             d.type === "grid"
-              ? config.chargeStrength * 2
-              : config.chargeStrength
+              ? config.chargeStrength * 3
+              : config.chargeStrength *
+                (1 + (d.size / config.baseNodeSize) * 0.1)
           )
       )
       .force(
@@ -223,51 +476,104 @@ export default function NodeNetwork({ data }) {
       .force(
         "collision",
         d3.forceCollide().radius((d) => d.size * config.collisionRadius)
-      )
-      .force("x", d3.forceX(width / 2).strength(0.05))
-      .force("y", d3.forceY(height / 2).strength(0.05));
+      );
+
+    // Ajustes según el layout seleccionado
+    if (layoutMode === "radial" || layoutMode === "sector") {
+      // Fuerzas más relajadas para layouts predefinidos
+      simulation.alpha(0.05);
+    } else {
+      // Más fuerzas para el layout de simulación pura
+      simulation
+        .force("x", d3.forceX(width / 2).strength(0.05))
+        .force("y", d3.forceY(height / 2).strength(0.05))
+        .alpha(0.5);
+    }
 
     // Guardar la simulación para poder acceder a ella después
     window.networkSimulation = simulation;
 
     // Crear definiciones para efectos visuales
-    const defs = svg.append("defs");
-
-    // Añadir sombras para mejor profundidad
-    defs
+    // Añadir filtro de sombra
+    const dropShadow = defs
       .append("filter")
       .attr("id", "shadow")
-      .append("feDropShadow")
-      .attr("dx", 0)
-      .attr("dy", 1)
+      .attr("filterUnits", "userSpaceOnUse")
+      .attr("width", "250%")
+      .attr("height", "250%");
+
+    dropShadow
+      .append("feGaussianBlur")
+      .attr("in", "SourceAlpha")
       .attr("stdDeviation", 2)
-      .attr("flood-opacity", 0.3);
+      .attr("result", "blur");
 
-    // Añadir gradiente para enlaces
-    const linkGradient = defs
-      .append("linearGradient")
-      .attr("id", "linkGradient")
-      .attr("gradientUnits", "userSpaceOnUse");
+    dropShadow
+      .append("feOffset")
+      .attr("in", "blur")
+      .attr("dx", 1)
+      .attr("dy", 1)
+      .attr("result", "offsetBlur");
 
-    linkGradient
-      .append("stop")
-      .attr("offset", "0%")
-      .attr("stop-color", colorScheme.grid);
+    const feComponentTransfer = dropShadow
+      .append("feComponentTransfer")
+      .attr("in", "offsetBlur")
+      .attr("result", "offsetBlur");
 
-    linkGradient
-      .append("stop")
-      .attr("offset", "100%")
-      .attr("stop-color", "#94a3b8");
+    feComponentTransfer
+      .append("feFuncA")
+      .attr("type", "linear")
+      .attr("slope", 0.3);
 
-    // Añadir glow para nodos seleccionados
-    defs
+    const feMerge = dropShadow.append("feMerge");
+    feMerge.append("feMergeNode").attr("in", "offsetBlur");
+    feMerge.append("feMergeNode").attr("in", "SourceGraphic");
+
+    // Gradientes para cada tipo de enlace
+    const createLinkGradient = (id, color) => {
+      const gradient = defs
+        .append("linearGradient")
+        .attr("id", id)
+        .attr("gradientUnits", "userSpaceOnUse");
+
+      gradient
+        .append("stop")
+        .attr("offset", "0%")
+        .attr("stop-color", colorScheme.grid);
+
+      gradient.append("stop").attr("offset", "100%").attr("stop-color", color);
+
+      return gradient;
+    };
+
+    createLinkGradient("linkGradientHome", colorScheme.home);
+    createLinkGradient("linkGradientBusiness", colorScheme.business);
+    createLinkGradient("linkGradientIndustry", colorScheme.industry);
+
+    // Filtro glow para nodos seleccionados con mejor efecto
+    const glow = defs
       .append("filter")
       .attr("id", "glow")
+      .attr("x", "-40%")
+      .attr("y", "-40%")
+      .attr("width", "180%")
+      .attr("height", "180%");
+
+    const feColorMatrix = glow
+      .append("feColorMatrix")
+      .attr("type", "matrix")
+      .attr("values", "0 0 0 0   0 0 0 0 0   0 0 0 0 0   0 0 0 1 0");
+
+    glow
       .append("feGaussianBlur")
-      .attr("stdDeviation", "2.5")
+      .attr("stdDeviation", "3")
       .attr("result", "coloredBlur");
 
-    // Crear grupo para enlaces
+    const feMergeGlow = glow.append("feMerge");
+    feMergeGlow.append("feMergeNode").attr("in", "coloredBlur");
+    feMergeGlow.append("feMergeNode").attr("in", "SourceGraphic");
+
+    // Crear grupo para enlaces con animación
     const linkGroup = svg.append("g").attr("class", "links");
 
     // Crear enlaces con mayor calidad visual
@@ -276,7 +582,13 @@ export default function NodeNetwork({ data }) {
       .data(links)
       .enter()
       .append("line")
-      .attr("stroke", "url(#linkGradient)")
+      .attr(
+        "stroke",
+        (d) =>
+          `url(#linkGradient${
+            d.type.charAt(0).toUpperCase() + d.type.slice(1)
+          })`
+      )
       .attr("stroke-opacity", 0.7)
       .attr("stroke-width", (d) => d.width)
       .attr("stroke-linecap", "round");
@@ -287,7 +599,7 @@ export default function NodeNetwork({ data }) {
     // Crear nodos con mejor visualización
     const node = nodeGroup
       .selectAll("path")
-      .data(nodes)
+      .data(processedNodes)
       .enter()
       .append("path")
       .attr("d", (d) => getNodeSymbol(d))
@@ -296,6 +608,7 @@ export default function NodeNetwork({ data }) {
       .attr("stroke-width", 1.5)
       .attr("filter", "url(#shadow)")
       .attr("cursor", "pointer")
+      .attr("opacity", 1)
       .call(
         d3
           .drag()
@@ -307,16 +620,25 @@ export default function NodeNetwork({ data }) {
     // Etiquetas mejoradas
     const labelGroup = svg.append("g").attr("class", "labels");
 
+    // Criterio para mostrar etiquetas: nodos grandes o importantes
+    const shouldShowLabel = (d) => {
+      if (d.type === "grid") return true; // Siempre mostrar etiqueta para el nodo central
+      if (d.type === "industry") return true; // Mostrar etiquetas para todas las industrias
+      if (d.type === "business" && d.consumption > 15) return true; // Negocios grandes
+      if (d.type === "home" && d.consumption > 10) return true; // Hogares grandes
+      return false;
+    };
+
     const labels = labelGroup
       .selectAll("text")
-      .data(nodes.filter((n) => n.id === "grid" || n.consumption > 15))
+      .data(processedNodes.filter(shouldShowLabel))
       .enter()
       .append("text")
       .text((d) => d.name)
-      .attr("font-size", "11px")
+      .attr("font-size", (d) => (d.type === "grid" ? "12px" : "10px"))
       .attr("font-weight", (d) => (d.type === "grid" ? "bold" : "normal"))
-      .attr("fill", "#374151")
-      .attr("dx", 15)
+      .attr("fill", colorScheme.text)
+      .attr("dx", 12)
       .attr("dy", 4)
       .attr("pointer-events", "none")
       .attr(
@@ -324,48 +646,65 @@ export default function NodeNetwork({ data }) {
         "0 1px 0 #fff, 1px 0 0 #fff, 0 -1px 0 #fff, -1px 0 0 #fff"
       );
 
-    // Crear tooltip mejorado
+    // Crear tooltip mejorado con más información
     const tooltip = d3
       .select(containerRef.current)
       .append("div")
       .attr(
         "class",
-        "absolute hidden bg-white p-3 rounded-lg shadow-lg text-sm z-10"
+        "absolute hidden bg-white p-3 rounded-lg shadow-lg text-sm z-10 dark:bg-gray-800 dark:text-white"
       )
       .style("pointer-events", "none")
-      .style("max-width", "200px")
+      .style("max-width", "220px")
       .attr("ref", tooltipRef);
 
     // Mejorar eventos de interacción para nodos
     node
       .on("mouseover", function (event, d) {
-        // Mostrar tooltip con diseño mejorado
+        // Mostrar tooltip con diseño mejorado y más información
         tooltip
           .html(
             `
-            <div class="font-bold text-base mb-1 text-gray-900">${d.name}</div>
-            <div class="text-gray-600 mb-2">${d.description || ""}</div>
+            <div class="font-bold text-base mb-1 text-gray-900 dark:text-white">${
+              d.name
+            }</div>
+            <div class="text-gray-600 dark:text-gray-300 mb-2">${
+              d.description || ""
+            }</div>
             ${
               d.type !== "grid"
                 ? `<div class="flex justify-between">
-                <span class="text-gray-500">Consumo:</span>
+                <span class="text-gray-500 dark:text-gray-400">Consumo:</span>
                 <span class="font-medium">${
                   d.consumption?.toFixed(1) || 0
                 } kW</span>
+              </div>
+              <div class="flex justify-between">
+                <span class="text-gray-500 dark:text-gray-400">Tipo:</span>
+                <span class="font-medium">${
+                  d.type === "home"
+                    ? "Residencial"
+                    : d.type === "business"
+                    ? "Comercial"
+                    : "Industrial"
+                }</span>
               </div>`
-                : `<div class="text-gray-500 italic">Centro de distribución</div>`
+                : `<div class="text-gray-500 dark:text-gray-400 italic">Centro de distribución de energía</div>
+                  <div class="mt-1 font-medium">Distribución total: ${
+                    energyStats?.total.totalConsumption.toFixed(1) || 0
+                  } kW</div>`
             }
           `
           )
-          .style("left", event.pageX + 10 + "px")
-          .style("top", event.pageY - 10 + "px")
+          .style("left", event.pageX + 15 + "px")
+          .style("top", event.pageY - 15 + "px")
           .classed("hidden", false);
 
         // Resaltar nodo activo
         d3.select(this)
           .transition()
           .duration(200)
-          .attr("stroke", "#000")
+          .attr("stroke", "#f8fafc")
           .attr("stroke-width", 2.5);
 
         // Resaltar enlaces conectados
@@ -376,6 +715,13 @@ export default function NodeNetwork({ data }) {
           .attr("stroke-opacity", 1)
           .attr("stroke-width", (l) => l.width * 2)
           .attr("stroke", colorScheme[d.type]);
+
+        // Atenuar otros nodos
+        node
+          .filter((n) => n.id !== d.id && n.id !== "grid")
+          .transition()
+          .duration(200)
+          .attr("opacity", 0.5);
       })
       .on("mouseout", function (event, d) {
         // Ocultar tooltip
@@ -397,7 +743,23 @@ export default function NodeNetwork({ data }) {
           .duration(200)
           .attr("stroke-opacity", 0.7)
           .attr("stroke-width", (d) => d.width)
-          .attr("stroke", "url(#linkGradient)");
+          .attr("stroke", (l) => {
+            // Determinar el gradiente a utilizar para el enlace de forma segura
+            const typeKey =
+              l.type === "home"
+                ? "Home"
+                : l.type === "business"
+                ? "Business"
+                : l.type === "industry"
+                ? "Industry"
+                : "";
+            return typeKey
+              ? `url(#linkGradient${typeKey})`
+              : `url(#linkGradient)`;
+          });
+
+        // Restaurar opacidad de otros nodos
+        node.transition().duration(200).attr("opacity", 1);
       })
       .on("click", function (event, d) {
         event.stopPropagation();
@@ -459,7 +821,13 @@ export default function NodeNetwork({ data }) {
         link
           .transition()
           .duration(config.animationDuration)
-          .attr("stroke", "url(#linkGradient)")
+          .attr(
+            "stroke",
+            (l) =>
+              `url(#linkGradient${
+                l.type.charAt(0).toUpperCase() + l.type.slice(1)
+              })`
+          )
           .attr("stroke-opacity", 0.7)
           .attr("stroke-width", (d) => d.width);
 
@@ -467,7 +835,7 @@ export default function NodeNetwork({ data }) {
       }
     });
 
-    // Función de actualización más suave
+    // Función de actualización más suave para el ticking
     simulation.on("tick", () => {
       // Actualizar posición de enlaces con curvas suaves
       link
@@ -499,7 +867,7 @@ export default function NodeNetwork({ data }) {
       d3.select(event.sourceEvent.target)
         .transition()
         .duration(200)
-        .attr("stroke", "#000")
+        .attr("stroke", "#f8fafc")
         .attr("stroke-width", 3);
     }
 
@@ -532,45 +900,82 @@ export default function NodeNetwork({ data }) {
       }
     }
 
-    // Leyenda mejorada
+    // Leyenda mejorada con codificación de tamaño
     const legendData = [
       {
         type: "grid",
         label: "Red Eléctrica",
         description: "Fuente de distribución",
       },
-      { type: "home", label: "Hogares", description: "Consumo residencial" },
+      {
+        type: "home",
+        label: "Hogares",
+        description: energyStats
+          ? `${
+              energyStats.homes.count
+            } unidades, ${energyStats.homes.totalConsumption.toFixed(
+              1
+            )} kW total`
+          : "Consumo residencial",
+      },
       {
         type: "business",
         label: "Comercios",
-        description: "Establecimientos comerciales",
+        description: energyStats
+          ? `${
+              energyStats.businesses.count
+            } unidades, ${energyStats.businesses.totalConsumption.toFixed(
+              1
+            )} kW total`
+          : "Establecimientos comerciales",
       },
       {
         type: "industry",
         label: "Industrias",
-        description: "Plantas industriales",
+        description: energyStats
+          ? `${
+              energyStats.industries.count
+            } unidades, ${energyStats.industries.totalConsumption.toFixed(
+              1
+            )} kW total`
+          : "Plantas industriales",
       },
     ];
 
+    // Crear una leyenda con explicación de tamaño
+    const legendWidth = 220;
     const legend = svg
       .append("g")
       .attr("transform", "translate(20, 20)")
-      .attr("class", "bg-white bg-opacity-80 p-2 rounded")
-      .attr("filter", "url(#shadow)");
+      .attr("class", "legend");
 
+    // Fondo con bordes suaves para la leyenda
     legend
       .append("rect")
-      .attr("width", 150)
-      .attr("height", legendData.length * 25 + 10)
+      .attr("width", legendWidth)
+      .attr("height", legendData.length * 25 + 70) // Espacio extra para la leyenda de tamaño
       .attr("fill", "white")
       .attr("fill-opacity", 0.9)
-      .attr("rx", 5)
-      .attr("ry", 5);
+      .attr("rx", 8)
+      .attr("ry", 8)
+      .attr("stroke", "#e2e8f0")
+      .attr("stroke-width", 1);
 
+    // Título de la leyenda
+    legend
+      .append("text")
+      .attr("x", 10)
+      .attr("y", 20)
+      .attr("font-size", "12px")
+      .attr("font-weight", "bold")
+      .attr("fill", "#1f2937")
+      .text("Leyenda");
+
+    // Agregar elementos de la leyenda
     legendData.forEach((item, i) => {
       const legendItem = legend
         .append("g")
-        .attr("transform", `translate(5, ${i * 25 + 15})`)
+        .attr("transform", `translate(10, ${i * 25 + 35})`)
         .attr("cursor", "pointer");
 
       // Icono
@@ -582,15 +987,24 @@ export default function NodeNetwork({ data }) {
         .attr("stroke-width", 1)
         .attr("transform", "scale(0.6)");
 
-      // Texto
+      // Texto principal
       legendItem
         .append("text")
         .text(item.label)
-        .attr("x", 15)
+        .attr("x", 20)
         .attr("y", 4)
         .attr("font-size", "12px")
         .attr("font-weight", "500")
         .attr("fill", "#374151");
+
+      // Descripción
+      legendItem
+        .append("text")
+        .text(item.description)
+        .attr("x", 20)
+        .attr("y", 18)
+        .attr("font-size", "9px")
+        .attr("fill", "#6b7280");
 
       // Interactividad de la leyenda
       legendItem
@@ -600,7 +1014,7 @@ export default function NodeNetwork({ data }) {
             .filter((d) => d.type === item.type)
             .transition()
             .duration(200)
-            .attr("stroke", "#000")
+            .attr("stroke", "#f8fafc")
             .attr("stroke-width", 2);
 
           // Atenuar otros tipos
@@ -666,40 +1080,233 @@ export default function NodeNetwork({ data }) {
           const typeNodes = nodes.filter((n) => n.type === item.type);
           if (typeNodes.length === 0) return;
 
-          // Calcular el centroide y escala
-          let sumX = 0,
-            sumY = 0;
-          typeNodes.forEach((n) => {
-            sumX += n.x;
-            sumY += n.y;
-          });
-
-          const centerX = sumX / typeNodes.length;
-          const centerY = sumY / typeNodes.length;
-
           // Actualizar la simulación para centrar estos nodos
           simulation
             .force(
               "x",
               d3
-                .forceX((d) => (d.type === item.type ? width / 2 : width / 2))
-                .strength((d) => (d.type === item.type ? 0.5 : 0.1))
+                .forceX((d) =>
+                  d.type === item.type
+                    ? width / 2
+                    : width / 2 + (Math.random() - 0.5) * 100
+                )
+                .strength((d) => (d.type === item.type ? 0.2 : 0.05))
             )
             .force(
               "y",
               d3
-                .forceY((d) => (d.type === item.type ? height / 2 : height / 2))
-                .strength((d) => (d.type === item.type ? 0.5 : 0.1))
+                .forceY((d) =>
+                  d.type === item.type
+                    ? height / 2
+                    : height / 2 + (Math.random() - 0.5) * 100
+                )
+                .strength((d) => (d.type === item.type ? 0.2 : 0.05))
             )
             .alpha(0.5)
             .restart();
         });
     });
 
+    // Añadir leyenda de tamaño de nodos
+    const sizeY = legendData.length * 25 + 40;
+
+    // Título para tamaños
+    legend
+      .append("text")
+      .attr("x", 10)
+      .attr("y", sizeY)
+      .attr("font-size", "10px")
+      .attr("font-weight", "500")
+      .attr("fill", "#4b5563")
+      .text("Tamaño = Consumo de energía");
+
+    // Ejemplos de tamaño
+    [5, 20, 50].forEach((value, i) => {
+      const x = 20 + i * 60;
+      const radius = Math.sqrt(value) * 0.8;
+
+      // Círculo para mostrar tamaño
+      legend
+        .append("circle")
+        .attr("cx", x)
+        .attr("cy", sizeY + 20)
+        .attr("r", radius)
+        .attr("fill", "#64748b")
+        .attr("fill-opacity", 0.5)
+        .attr("stroke", "#475569")
+        .attr("stroke-width", 1);
+
+      // Etiqueta de valor
+      legend
+        .append("text")
+        .attr("x", x)
+        .attr("y", sizeY + 35)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "9px")
+        .attr("fill", "#4b5563")
+        .text(`${value} kW`);
+    });
+
+    // Panel de controles de layout
+    const controls = svg
+      .append("g")
+      .attr("transform", `translate(${width - 140}, 20)`)
+      .attr("class", "controls");
+
+    // Fondo para los controles
+    controls
+      .append("rect")
+      .attr("width", 120)
+      .attr("height", 100)
+      .attr("fill", "white")
+      .attr("fill-opacity", 0.9)
+      .attr("rx", 8)
+      .attr("ry", 8)
+      .attr("stroke", "#e2e8f0")
+      .attr("stroke-width", 1);
+
+    // Título de los controles
+    controls
+      .append("text")
+      .attr("x", 10)
+      .attr("y", 20)
+      .attr("font-size", "11px")
+      .attr("font-weight", "bold")
+      .attr("fill", "#1f2937")
+      .text("Configuración");
+
+    // Botones de layout
+    const layoutButtons = [
+      { id: "radial", label: "Radial", x: 15, y: 40 },
+      { id: "sector", label: "Sectorial", x: 65, y: 40 },
+      { id: "force", label: "Disperso", x: 15, y: 70 },
+    ];
+
+    layoutButtons.forEach((btn) => {
+      const button = controls
+        .append("g")
+        .attr("cursor", "pointer")
+        .on("click", () => {
+          setLayoutMode(btn.id);
+
+          // Reiniciar posiciones según el layout seleccionado
+          if (btn.id === "radial") {
+            applyRadialLayout(processedNodes, width, height);
+          } else if (btn.id === "sector") {
+            applySectorLayout(processedNodes, width, height);
+          } else {
+            // Liberar todas las posiciones fijas
+            processedNodes.forEach((node) => {
+              if (node.id !== "grid") {
+                node.fx = null;
+                node.fy = null;
+              }
+            });
+          }
+
+          // Actualizar la simulación
+          simulation.alpha(0.5).restart();
+        });
+
+      // Fondo del botón
+      button
+        .append("rect")
+        .attr("x", btn.x)
+        .attr("y", btn.y - 15)
+        .attr("width", 45)
+        .attr("height", 20)
+        .attr("rx", 4)
+        .attr("fill", layoutMode === btn.id ? "#3b82f6" : "#f1f5f9")
+        .attr("stroke", layoutMode === btn.id ? "#2563eb" : "#cbd5e1")
+        .attr("stroke-width", 1);
+
+      // Texto del botón
+      button
+        .append("text")
+        .attr("x", btn.x + 22.5)
+        .attr("y", btn.y)
+        .attr("text-anchor", "middle")
+        .attr("font-size", "9px")
+        .attr("font-weight", layoutMode === btn.id ? "bold" : "normal")
+        .attr("fill", layoutMode === btn.id ? "white" : "#475569")
+        .text(btn.label);
+    });
+
     // Controles de zoom
+    const zoomControls = svg
+      .append("g")
+      .attr("transform", `translate(${width - 50}, 140)`)
+      .attr("class", "zoom-controls");
+
+    // Fondo para los controles de zoom
+    zoomControls
+      .append("rect")
+      .attr("width", 30)
+      .attr("height", 60)
+      .attr("fill", "white")
+      .attr("fill-opacity", 0.8)
+      .attr("rx", 15)
+      .attr("ry", 15)
+      .attr("stroke", "#e2e8f0")
+      .attr("stroke-width", 1);
+
+    // Botón zoom in
+    const zoomIn = zoomControls
+      .append("g")
+      .attr("transform", "translate(15, 20)")
+      .attr("cursor", "pointer");
+
+    zoomIn
+      .append("circle")
+      .attr("r", 10)
+      .attr("fill", "#f8fafc")
+      .attr("stroke", "#d1d5db")
+      .attr("stroke-width", 1);
+
+    zoomIn
+      .append("line")
+      .attr("x1", -5)
+      .attr("y1", 0)
+      .attr("x2", 5)
+      .attr("y2", 0)
+      .attr("stroke", "#4b5563")
+      .attr("stroke-width", 1.5);
+
+    zoomIn
+      .append("line")
+      .attr("x1", 0)
+      .attr("y1", -5)
+      .attr("x2", 0)
+      .attr("y2", 5)
+      .attr("stroke", "#4b5563")
+      .attr("stroke-width", 1.5);
+
+    // Botón zoom out
+    const zoomOut = zoomControls
+      .append("g")
+      .attr("transform", "translate(15, 40)")
+      .attr("cursor", "pointer");
+
+    zoomOut
+      .append("circle")
+      .attr("r", 10)
+      .attr("fill", "#f8fafc")
+      .attr("stroke", "#d1d5db")
+      .attr("stroke-width", 1);
+
+    zoomOut
+      .append("line")
+      .attr("x1", -5)
+      .attr("y1", 0)
+      .attr("x2", 5)
+      .attr("y2", 0)
+      .attr("stroke", "#4b5563")
+      .attr("stroke-width", 1.5);
+
+    // Implementar zoom
     const zoom = d3
       .zoom()
-      .scaleExtent([0.5, 3])
+      .scaleExtent([0.5, 4])
       .on("zoom", (event) => {
         nodeGroup.attr("transform", event.transform);
         linkGroup.attr("transform", event.transform);
@@ -708,94 +1315,16 @@ export default function NodeNetwork({ data }) {
 
     svg.call(zoom);
 
-    // Botones de control para zoom
-    const controls = svg
-      .append("g")
-      .attr("transform", `translate(${width - 100}, 20)`)
-      .attr("class", "bg-white bg-opacity-80 rounded")
-      .attr("filter", "url(#shadow)");
-
-    controls
-      .append("rect")
-      .attr("width", 80)
-      .attr("height", 35)
-      .attr("fill", "white")
-      .attr("fill-opacity", 0.9)
-      .attr("rx", 5)
-      .attr("ry", 5);
-
-    // Botón de zoom in
-    const zoomIn = controls
-      .append("g")
-      .attr("transform", "translate(15, 17.5)")
-      .attr("cursor", "pointer");
-
-    zoomIn
-      .append("circle")
-      .attr("r", 12)
-      .attr("fill", "#f3f4f6")
-      .attr("stroke", "#d1d5db")
-      .attr("stroke-width", 1);
-
-    zoomIn
-      .append("line")
-      .attr("x1", -6)
-      .attr("y1", 0)
-      .attr("x2", 6)
-      .attr("y2", 0)
-      .attr("stroke", "#4b5563")
-      .attr("stroke-width", 2);
-
-    zoomIn
-      .append("line")
-      .attr("x1", 0)
-      .attr("y1", -6)
-      .attr("x2", 0)
-      .attr("y2", 6)
-      .attr("stroke", "#4b5563")
-      .attr("stroke-width", 2);
-
+    // Eventos para los botones de zoom
     zoomIn.on("click", () => {
       svg.transition().duration(300).call(zoom.scaleBy, 1.3);
     });
-
-    // Botón de zoom out
-    const zoomOut = controls
-      .append("g")
-      .attr("transform", "translate(65, 17.5)")
-      .attr("cursor", "pointer");
-
-    zoomOut
-      .append("circle")
-      .attr("r", 12)
-      .attr("fill", "#f3f4f6")
-      .attr("stroke", "#d1d5db")
-      .attr("stroke-width", 1);
-
-    zoomOut
-      .append("line")
-      .attr("x1", -6)
-      .attr("y1", 0)
-      .attr("x2", 6)
-      .attr("y2", 0)
-      .attr("stroke", "#4b5563")
-      .attr("stroke-width", 2);
 
     zoomOut.on("click", () => {
       svg.transition().duration(300).call(zoom.scaleBy, 0.7);
     });
 
-    // Información adicional sobre interacción
-    const helpText = svg
-      .append("text")
-      .attr("x", width - 20)
-      .attr("y", height - 20)
-      .attr("text-anchor", "end")
-      .attr("font-size", "11px")
-      .attr("fill", "#6b7280")
-      .text("Shift+Arrastrar: Fija nodos | Doble-click: Reinicia posición");
-
-    // Atajos de teclado
+    // Atajos de teclado mejorados
     d3.select("body").on("keydown", (event) => {
       // Escape deselecciona nodo
       if (event.key === "Escape" && selectedNode) {
@@ -813,28 +1342,71 @@ export default function NodeNetwork({ data }) {
       // R reinicia la simulación
       if (event.key === "r") {
         nodes.forEach((d) => {
-          d.fx = null;
-          d.fy = null;
+          if (d.id !== "grid") {
+            d.fx = null;
+            d.fy = null;
+          }
         });
+        simulation.alpha(1).restart();
+      }
 
+      // F fija todos los nodos en su posición actual
+      if (event.key === "f") {
+        nodes.forEach((d) => {
+          d.fx = d.x;
+          d.fy = d.y;
+        });
+      }
+
+      // 1-3 para cambiar layouts
+      if (event.key === "1") {
+        setLayoutMode("radial");
+        applyRadialLayout(processedNodes, width, height);
+        simulation.alpha(0.3).restart();
+      } else if (event.key === "2") {
+        setLayoutMode("sector");
+        applySectorLayout(processedNodes, width, height);
+        simulation.alpha(0.3).restart();
+      } else if (event.key === "3") {
+        setLayoutMode("force");
+        processedNodes.forEach((node) => {
+          if (node.id !== "grid") {
+            node.fx = null;
+            node.fy = null;
+          }
+        });
         simulation.alpha(1).restart();
       }
     });
 
+    // Añadir una animación inicial para la carga de los nodos
+    node
+      .attr("opacity", 0)
+      .attr("transform", (d) => {
+        // Todos empiezan desde el centro
+        const centerX = width / 2;
+        const centerY = height / 2;
+        return `translate(${centerX}, ${centerY})`;
+      })
+      .transition()
+      .delay((d, i) => i * 10)
+      .duration(800)
+      .attr("opacity", 1);
+
     // Actualizar dimensiones
     updateSvgSize();
-  }, [nodes, links, selectedNode]);
+  }, [nodes, links, selectedNode, layoutMode, energyStats, colorScheme]);
 
   if (!data) return null;
 
   return (
-    <div className="flex flex-col w-full h-full">
-      <div className="flex justify-between items-center px-4 py-2 bg-white border-b">
-        <h3 className="text-lg font-medium text-gray-900">
+    <div className="flex flex-col w-full h-full bg-white shadow rounded-lg dark:bg-gray-800">
+      <div className="flex justify-between items-center px-4 py-2 bg-gray-50 border-b dark:bg-gray-700 dark:border-gray-600 rounded-t-lg">
+        <h3 className="text-lg font-medium text-gray-900 dark:text-white">
           Red de Distribución Eléctrica
         </h3>
         {selectedNode && (
-          <div className="bg-blue-50 px-3 py-1 rounded-full text-sm text-blue-800 flex items-center">
+          <div className="bg-blue-50 px-3 py-1 rounded-full text-sm text-blue-800 flex items-center dark:bg-blue-900 dark:text-blue-200">
             <span className="w-2 h-2 rounded-full bg-blue-500 mr-2"></span>
             Nodo seleccionado: {selectedNode.name}
           </div>
@@ -846,10 +1418,35 @@ export default function NodeNetwork({ data }) {
         ref={containerRef}
         style={{ minHeight: "600px" }}
       ></div>
-      <div className="text-xs text-gray-500 px-4 py-2 bg-gray-50 border-t">
-        <span className="font-medium">Interacción:</span> Haz clic en un nodo
-        para seleccionarlo. Arrástralo para moverlo. Mantén Shift al soltar para
-        fijarlo.
+      <div className="flex justify-between items-center text-xs px-4 py-3 bg-gray-50 border-t dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 rounded-b-lg">
+        <div>
+          <span className="font-medium mr-1">Interacción:</span>
+          Haz clic en un nodo para seleccionarlo. Arrástralo para moverlo.
+          <span className="hidden sm:inline">
+            {" "}
+            Mantén Shift al soltar para fijarlo.
+          </span>
+        </div>
+        <div className="flex items-center space-x-3">
+          <button
+            className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded dark:bg-blue-900 dark:text-blue-200"
+            onClick={() => {
+              // Reiniciar simulación
+              if (window.networkSimulation) {
+                const nodes = window.networkSimulation.nodes();
+                nodes.forEach((d) => {
+                  if (d.id !== "grid") {
+                    d.fx = null;
+                    d.fy = null;
+                  }
+                });
+                window.networkSimulation.alpha(1).restart();
+              }
+            }}
+          >
+            Reiniciar
+          </button>
+        </div>
       </div>
     </div>
   );

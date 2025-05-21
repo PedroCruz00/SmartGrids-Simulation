@@ -24,7 +24,20 @@ def run_simulation(params: SimulationParams):
     try:
         logger.info(f"Executing simulation with params: {params}")
         result = simulate_demand(params, params.strategy)
-        logger.info("Simulation completed successfully")
+        logger.info(f"Simulation completed successfully. Peak demand: {result.get('peak_demand')}")
+        
+        # Verificar los datos de red generados
+        network_data = result.get("network_data", {})
+        homes_count = len(network_data.get("homes", []))
+        businesses_count = len(network_data.get("businesses", []))
+        industries_count = len(network_data.get("industries", []))
+        
+        logger.info(f"Network data generated: Homes={homes_count}, Businesses={businesses_count}, Industries={industries_count}")
+        
+        # Verificar datos para comparación
+        if "fixed_demand" in result and result["fixed_demand"] is not None:
+            logger.info(f"Fixed demand data available for comparison. Peak: {result['fixed_demand'].get('peak_demand')}")
+        
         return result
     except Exception as e:
         logger.error(f"Error in simulation: {str(e)}", exc_info=True)

@@ -4,25 +4,41 @@ import MetricsPanel from "../components/MetricsPanel";
 import DemandChart from "../components/DemandChart";
 import NodeNetwork from "../components/NodeNetwork";
 import Loader from "../components/Loader";
-import { runSimulation, getMockData } from "../api/SimulationService";
+import { runSimulation } from "../api/SimulationService";
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(false);
   const [simulationResults, setSimulationResults] = useState(null);
   const [error, setError] = useState(null);
-  const [currentMode, setCurrentMode] = useState("mock"); // "api" o "mock"
 
   // Función para procesar los datos recibidos del backend
   const processApiResults = (apiResults) => {
-    // Construir estructura compatible con el frontend
+    console.log("Procesando resultados:", apiResults);
+
+    // Verificar que tenemos datos de fixed_demand para comparación
+    const hasFixedData =
+      apiResults.fixed_demand && apiResults.fixed_demand.time_series;
+
+    // Determinar estrategia actual
+    const currentStrategy = apiResults.strategy || "fixed";
+
+    // Construir estructura para el gráfico
     const hourlyData = apiResults.time_series.map((value, i) => {
-      // Crear estructura para el gráfico
       const entry = {
-        hour: i,
+        hour: i % 24, // Asegurar que la hora sea 0-23
         dr_demand: value,
       };
 
-      // Añadir desviación estándar si está disponible
+      // Añadir datos de consumo fijo para comparación
+      if (hasFixedData) {
+        entry.fixed_demand = apiResults.fixed_demand.time_series[i];
+      } else {
+        // Si no tenemos datos fixed, usar una estimación basada en el valor actual
+        entry.fixed_demand =
+          apiResults.strategy === "fixed" ? value : value * 1.15;
+      }
+
+      // Añadir desviación estándar si está disponible (Monte Carlo)
       if (apiResults.time_series_std) {
         entry.dr_demand_std = apiResults.time_series_std[i];
       }
@@ -35,56 +51,122 @@ export default function Dashboard() {
       return entry;
     });
 
-    // Generar datos de red (aún con datos de ejemplo porque el backend no los proporciona)
-    const generateConsumers = (count, type, baseFactor = 1) => {
-      const baseConsumption =
-        type === "home"
-          ? 5 * baseFactor
-          : type === "business"
-          ? 20 * baseFactor
-          : 100 * baseFactor;
-
-      return Array.from({ length: count }, (_, i) => ({
-        id: `${type}-${i}`,
-        consumption: baseConsumption + Math.random() * baseConsumption * 0.5,
-      }));
+    // Verificar que tenemos datos de red
+    const networkData = apiResults.network_data || {
+      homes: [],
+      businesses: [],
+      industries: [],
     };
 
-    // Determinar si se usó Monte Carlo
-    const usedMonteCarlo =
-      apiResults.monte_carlo_samples && apiResults.monte_carlo_samples > 1;
-    if (usedMonteCarlo) {
-      console.log("Simulación Monte Carlo detectada");
+    // Verificar que cada componente de la red tiene el formato correcto
+    const validatedNetworkData = {
+      homes: networkData.homes
+        ? networkData.homes.map((home) => ({
+            id: home.id || `home-${Math.random().toString(36).substr(2, 9)}`,
+            type: "home",
+            consumption: home.consumption || 5,
+          }))
+        : [],
+      businesses: networkData.businesses
+        ? networkData.businesses.map((business) => ({
+            id:
+              business.id ||
+              `business-${Math.random().toString(36).substr(2, 9)}`,
+            type: "business",
+            consumption: business.consumption || 20,
+          }))
+        : [],
+      industries: networkData.industries
+        ? networkData.industries.map((industry) => ({
+            id:
+              industry.id ||
+              `industry-${Math.random().toString(36).substr(2, 9)}`,
+            type: "industry",
+            consumption: industry.consumption || 100,
+          }))
+        : [],
+    };
+
+    // Asegurar que los valores necesarios para los cálculos estén definidos
+    const avgDemand =
+      typeof apiResults.average_demand === "number"
+        ? apiResults.average_demand
+        : 0;
+    const hours = typeof apiResults.hours === "number" ? apiResults.hours : 24;
+
+    // Calcular métricas adicionales con manejo seguro
+    const totalEnergyConsumption = avgDemand * hours;
+
+    // Calcular precio promedio con validación
+    let averagePrice = 0.15; // Valor por defecto
+    if (
+      apiResults.price_series &&
+      Array.isArray(apiResults.price_series) &&
+      apiResults.price_series.length > 0
+    ) {
+      const validPrices = apiResults.price_series.filter(
+        (price) => typeof price === "number"
+      );
+      if (validPrices.length > 0) {
+        const sumPrices = validPrices.reduce((sum, price) => sum + price, 0);
+        averagePrice = sumPrices / validPrices.length;
+      }
     }
 
-    // Estructura final para el frontend
+    const energyCost = totalEnergyConsumption * averagePrice;
+
+    // Estimar emisiones totales basadas en un factor de emisión estándar
+    const emissionFactor = 0.5; // kg CO2 por kWh (valor típico para una matriz energética mixta)
+    const totalEmissions = totalEnergyConsumption * emissionFactor;
+
+    // Construir métricas para el panel con valores seguros
+    const metrics = {
+      peak_demand_fixed:
+        hasFixedData && typeof apiResults.fixed_demand.peak_demand === "number"
+          ? apiResults.fixed_demand.peak_demand
+          : typeof apiResults.peak_demand === "number"
+          ? apiResults.peak_demand * 1.15
+          : 0,
+      peak_demand_dr:
+        typeof apiResults.peak_demand === "number" ? apiResults.peak_demand : 0,
+      peak_demand_confidence: apiResults.peak_demand_confidence || 0,
+      avg_demand_fixed:
+        hasFixedData &&
+        typeof apiResults.fixed_demand.average_demand === "number"
+          ? apiResults.fixed_demand.average_demand
+          : avgDemand * 1.12,
+      avg_demand_dr: avgDemand,
+      avg_demand_confidence: apiResults.avg_demand_confidence || 0,
+      emissions_reduction:
+        typeof apiResults.reduced_emissions === "number"
+          ? apiResults.reduced_emissions
+          : 0,
+      emissions_total: isNaN(totalEmissions) ? 0 : totalEmissions,
+      emissions_reduction_confidence:
+        apiResults.reduced_emissions_confidence || 0,
+      cost_savings:
+        typeof apiResults.cost_savings === "number"
+          ? apiResults.cost_savings
+          : 0,
+      energy_cost: isNaN(energyCost) ? avgDemand * hours * 0.15 : energyCost,
+      monte_carlo_samples:
+        typeof apiResults.monte_carlo_samples === "number"
+          ? apiResults.monte_carlo_samples
+          : 1,
+      strategy: currentStrategy,
+    };
+
+    // Calcular valores derivados adicionales
+    metrics.energy_cost_estimate = metrics.avg_demand_dr * hours * 0.15;
+    metrics.potential_savings = metrics.energy_cost * 0.12;
+
+    console.log("Métricas procesadas:", metrics);
+
     return {
       demand_data: hourlyData,
-      metrics: {
-        peak_demand_fixed: apiResults.peak_demand * 1.15, // Estimación aproximada para comparación
-        peak_demand_dr: apiResults.peak_demand,
-        peak_demand_confidence: apiResults.peak_demand_confidence,
-        avg_demand_fixed: apiResults.average_demand * 1.12, // Estimación aproximada
-        avg_demand_dr: apiResults.average_demand,
-        avg_demand_confidence: apiResults.average_demand_confidence,
-        emissions_reduction: apiResults.reduced_emissions,
-        emissions_reduction_confidence: apiResults.reduced_emissions_confidence,
-        cost_savings: apiResults.reduced_emissions * 0.7, // Estimación de ahorro basada en emisiones
-        monte_carlo_samples: apiResults.monte_carlo_samples || 1,
-      },
-      network_data: {
-        homes: generateConsumers(apiResults.num_homes || 50, "home"),
-        businesses: generateConsumers(
-          apiResults.num_commercial || 20,
-          "business"
-        ),
-        industries: generateConsumers(
-          apiResults.num_industrial || 10,
-          "industry"
-        ),
-      },
+      metrics: metrics,
+      network_data: validatedNetworkData,
       energy_system: apiResults.final_energy_system,
-      raw_api_response: apiResults, // Guardar respuesta raw para depuración
     };
   };
 
@@ -93,19 +175,10 @@ export default function Dashboard() {
     setError(null);
 
     try {
-      if (currentMode === "api") {
-        // Usar API real
-        const results = await runSimulation(params);
-        console.log(results); // Verificar lo que devuelve la API
-        const processedResults = processApiResults(results);
-        setSimulationResults(processedResults);
-      } else {
-        // Usar datos de ejemplo
-        setTimeout(() => {
-          const mockData = getMockData();
-          setSimulationResults(mockData);
-        }, 1000); // Simular delay de API
-      }
+      const results = await runSimulation(params);
+      console.log("Resultados de la API:", results);
+      const processedResults = processApiResults(results);
+      setSimulationResults(processedResults);
     } catch (err) {
       console.error("Error al ejecutar la simulación:", err);
       setError("Error al ejecutar la simulación: " + err.message);
@@ -114,30 +187,18 @@ export default function Dashboard() {
     }
   };
 
-  // Función para cambiar entre API y mock
-  const toggleMode = () => {
-    setCurrentMode(currentMode === "api" ? "mock" : "api");
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <header className="bg-white dark:bg-gray-800 shadow">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 flex justify-between items-center">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
             Simulación de Respuesta a la Demanda
           </h1>
-
-          {/* Botón para cambiar modo API/Mock */}
-          <button
-            onClick={toggleMode}
-            className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-md dark:bg-blue-900 dark:text-blue-200"
-          >
-            Modo: {currentMode === "api" ? "API Real" : "Datos Ejemplo"}
-          </button>
         </div>
       </header>
 
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+        {/* Resto del código actual del componente... */}
         <div className="px-4 py-6 sm:px-0">
           <SimulationForm onSubmit={handleRunSimulation} />
 
@@ -166,12 +227,66 @@ export default function Dashboard() {
             </div>
           )}
 
+          {!loading && !simulationResults && (
+            <div className="mt-6 bg-white overflow-hidden shadow rounded-lg dark:bg-gray-800">
+              <div className="px-4 py-5 sm:p-6">
+                <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
+                  Métodos de Simulación Utilizados
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-blue-50 p-4 rounded-lg dark:bg-blue-900">
+                    <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+                      Monte Carlo
+                    </h3>
+                    <p className="text-sm text-blue-700 dark:text-blue-300">
+                      Ejecuta múltiples simulaciones con diferentes condiciones
+                      iniciales para obtener distribuciones estadísticas.
+                      Permite cuantificar la incertidumbre en las predicciones y
+                      calcular intervalos de confianza.
+                    </p>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-lg dark:bg-green-900">
+                    <h3 className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
+                      Cadenas de Markov
+                    </h3>
+                    <p className="text-sm text-green-700 dark:text-green-300">
+                      Modelan las transiciones entre estados de demanda
+                      energética, capturando la naturaleza estocástica del
+                      consumo a lo largo del tiempo con dependencias temporales.
+                    </p>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-lg dark:bg-purple-900">
+                    <h3 className="text-sm font-medium text-purple-800 dark:text-purple-200 mb-2">
+                      Dinámica de Sistemas
+                    </h3>
+                    <p className="text-sm text-purple-700 dark:text-purple-300">
+                      Simula las retroalimentaciones entre precio, adopción de
+                      renovables y almacenamiento de energía, modelando cómo
+                      estos factores evolucionan e interactúan con el tiempo.
+                    </p>
+                  </div>
+                  <div className="bg-orange-50 p-4 rounded-lg dark:bg-orange-900">
+                    <h3 className="text-sm font-medium text-orange-800 dark:text-orange-200 mb-2">
+                      Eventos Discretos
+                    </h3>
+                    <p className="text-sm text-orange-700 dark:text-orange-300">
+                      El sistema avanza en pasos de tiempo discretos (horas),
+                      actualizando el estado del sistema en cada paso según las
+                      condiciones y reglas definidas.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {loading ? (
             <div className="flex justify-center items-center mt-12">
               <Loader />
             </div>
           ) : simulationResults ? (
             <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+              {/* Resto del código para mostrar resultados... */}
               <div className="bg-white overflow-hidden shadow rounded-lg dark:bg-gray-800">
                 <div className="px-4 py-5 sm:p-6">
                   <MetricsPanel data={simulationResults.metrics} />
