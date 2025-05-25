@@ -1,6 +1,7 @@
 import numpy as np
 from typing import Dict, List, Tuple, Literal
 import simpy
+import time
 from datetime import datetime
 from models import SimulationParams
 
@@ -58,7 +59,7 @@ class EnergySystem:
         # Las energías renovables tienen 0 emisiones, mientras las no renovables tienen un factor base
         non_renewable_factor = 0.5  # kg CO2/kWh
         return non_renewable_factor * (1 - self.renewable_adoption)
-    
+
 # Simular consumo base para cada tipo de usuario con distribuciones más realistas
 def generate_base_consumption(num_entities, entity_type, hour_of_day, day_type="weekday", seed=None):
     """
@@ -252,6 +253,7 @@ def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'wee
         multiplier_results.append(demand_multipliers[current])
 
     return state_results, multiplier_results
+
 def calculate_consumer_elasticity(consumer_type: str, price: float, state: str, base_price: float = 0.15) -> float:
     """
     Calcula la elasticidad del consumidor basada en el tipo, precio y estado de la demanda
@@ -512,13 +514,13 @@ def simulate_demand(params, strategy):
     
     # Si se solicita Monte Carlo y más de 1 muestra
     if params.montecarlo_samples > 1:
-        # Inicializar sistema energético compartido para todas las simulaciones
-        energy_system = EnergySystem()
         # Ejecutar múltiples simulaciones
         results = []
         for i in range(params.montecarlo_samples):
+            # Cada simulación con su propio sistema energético
+            energy_system = EnergySystem()
             # Variamos la semilla y la hora de inicio para cada simulación
-            seed = 42 + i
+            seed = int(time.time()) + i * 100  # Ahora time.time() funciona correctamente
             hour_start = (params.hour_start + i % 24) % 24  # Variar hora de inicio basada en la especificada
             day_type = params.day_type  # Mantener el tipo de día especificado
             if i % 7 >= 5:  # Para el 30% de las muestras, cambiar el tipo de día
@@ -574,8 +576,10 @@ def simulate_demand(params, strategy):
             "cost_savings": cost_savings,
             "monte_carlo_samples": params.montecarlo_samples,
             "fixed_demand": fixed_demand,
-            "network_data": network_data
+            "network_data": network_data,
+            "strategy": strategy
         }
+        
         # Incluir estado final del sistema energético
         if strategy == 'smart_grid':
             result["final_energy_system"] = {
@@ -611,51 +615,6 @@ def normalize_transition_matrix(matrix):
     # Evita división por cero
     row_sums[row_sums == 0] = 1
     return matrix / row_sums[:, np.newaxis]
-
-def generate_network_data(params):
-    """
-    Genera datos de red para la visualización
-    Args:
-    params: Parámetros de simulación
-    Returns:
-    Datos de red para visualización
-    """
-    homes = []
-    businesses = []
-    industries = []
-    
-    # Generar datos para hogares
-    for i in range(params.num_homes):
-        consumption = np.random.lognormal(mean=1.5, sigma=0.5) * 5  # Distribución lognormal para consumo
-        homes.append({
-            "id": f"home-{i}",
-            "type": "home",
-            "consumption": float(consumption)
-        })
-    
-    # Generar datos para negocios
-    for i in range(params.num_commercial):
-        consumption = np.random.lognormal(mean=2.0, sigma=0.6) * 20  # Mayor consumo para negocios
-        businesses.append({
-            "id": f"business-{i}",
-            "type": "business",
-            "consumption": float(consumption)
-        })
-    
-    # Generar datos para industrias
-    for i in range(params.num_industrial):
-        consumption = np.random.lognormal(mean=3.0, sigma=0.7) * 100  # Mucho mayor para industrias
-        industries.append({
-            "id": f"industry-{i}",
-            "type": "industry",
-            "consumption": float(consumption)
-        })
-    
-    return {
-        "homes": homes,
-        "businesses": businesses,
-        "industries": industries
-    }
 
 def generate_network_data(params):
     """

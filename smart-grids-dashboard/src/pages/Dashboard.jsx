@@ -1,3 +1,4 @@
+//C:\SmartGrids-Simulation\smart-grids-dashboard\src\pages\Dashboard.jsx
 import { useState } from "react";
 import SimulationForm from "../components/SimulationForm";
 import MetricsPanel from "../components/MetricsPanel";
@@ -41,6 +42,13 @@ export default function Dashboard() {
       // Añadir desviación estándar si está disponible (Monte Carlo)
       if (apiResults.time_series_std) {
         entry.dr_demand_std = apiResults.time_series_std[i];
+
+        // Calcular los límites del intervalo de confianza (95%)
+        const confidenceFactor = 1.96; // Para 95% de confianza
+        entry.dr_lower =
+          entry.dr_demand - confidenceFactor * entry.dr_demand_std;
+        entry.dr_upper =
+          entry.dr_demand + confidenceFactor * entry.dr_demand_std;
       }
 
       // Añadir precios si están disponibles
@@ -121,39 +129,51 @@ export default function Dashboard() {
 
     // Construir métricas para el panel con valores seguros
     const metrics = {
+      // Para estrategias no-fijas, usar datos de comparación correctos
       peak_demand_fixed:
         hasFixedData && typeof apiResults.fixed_demand.peak_demand === "number"
           ? apiResults.fixed_demand.peak_demand
-          : typeof apiResults.peak_demand === "number"
-          ? apiResults.peak_demand * 1.15
-          : 0,
+          : currentStrategy === "fixed"
+          ? apiResults.peak_demand // En modo fijo, usar el valor actual
+          : apiResults.peak_demand * 1.15, // Estimación para comparación
+
       peak_demand_dr:
         typeof apiResults.peak_demand === "number" ? apiResults.peak_demand : 0,
+
       peak_demand_confidence: apiResults.peak_demand_confidence || 0,
+
       avg_demand_fixed:
         hasFixedData &&
         typeof apiResults.fixed_demand.average_demand === "number"
           ? apiResults.fixed_demand.average_demand
-          : avgDemand * 1.12,
+          : currentStrategy === "fixed"
+          ? avgDemand // En modo fijo, usar el valor actual
+          : avgDemand * 1.12, // Estimación para comparación
+
       avg_demand_dr: avgDemand,
-      avg_demand_confidence: apiResults.avg_demand_confidence || 0,
+      avg_demand_confidence: apiResults.average_demand_confidence || 0,
+
       emissions_reduction:
         typeof apiResults.reduced_emissions === "number"
           ? apiResults.reduced_emissions
           : 0,
+
       emissions_total: isNaN(totalEmissions) ? 0 : totalEmissions,
       emissions_reduction_confidence:
         apiResults.reduced_emissions_confidence || 0,
+
       cost_savings:
         typeof apiResults.cost_savings === "number"
           ? apiResults.cost_savings
           : 0,
+
       energy_cost: isNaN(energyCost) ? avgDemand * hours * 0.15 : energyCost,
       monte_carlo_samples:
         typeof apiResults.monte_carlo_samples === "number"
           ? apiResults.monte_carlo_samples
           : 1,
-      strategy: currentStrategy,
+
+      strategy: currentStrategy, // Asegurar que la estrategia se pase correctamente
     };
 
     // Calcular valores derivados adicionales
