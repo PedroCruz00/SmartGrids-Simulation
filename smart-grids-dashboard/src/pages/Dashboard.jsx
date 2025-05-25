@@ -1,3 +1,4 @@
+//C:\SmartGrids-Simulation\smart-grids-dashboard\src\pages\Dashboard.jsx
 import { useState } from "react";
 import SimulationForm from "../components/SimulationForm";
 import MetricsPanel from "../components/MetricsPanel";
@@ -41,6 +42,13 @@ export default function Dashboard() {
       // Añadir desviación estándar si está disponible (Monte Carlo)
       if (apiResults.time_series_std) {
         entry.dr_demand_std = apiResults.time_series_std[i];
+
+        // Calcular los límites del intervalo de confianza (95%)
+        const confidenceFactor = 1.96; // Para 95% de confianza
+        entry.dr_lower =
+          entry.dr_demand - confidenceFactor * entry.dr_demand_std;
+        entry.dr_upper =
+          entry.dr_demand + confidenceFactor * entry.dr_demand_std;
       }
 
       // Añadir precios si están disponibles
