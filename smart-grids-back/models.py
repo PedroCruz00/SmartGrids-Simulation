@@ -13,7 +13,7 @@ class SimulationParams(BaseModel):
 
     class Config:
         validate_by_name = True
-        allow_population_by_field_name = True
+        populate_by_name = True  # Reemplaza allow_population_by_field_name
 
 class EnergySystemState(BaseModel):
     price: float

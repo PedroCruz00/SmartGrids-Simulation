@@ -1,9 +1,8 @@
-# C:\SmartGrids-Simulation\smart-grids-back\simulation.py
 import numpy as np
 from typing import Dict, List, Tuple, Literal
 import simpy
 import time
-from datetime import datetime, time
+from datetime import datetime
 from models import SimulationParams
 
 class EnergySystem:
@@ -60,7 +59,7 @@ class EnergySystem:
         # Las energías renovables tienen 0 emisiones, mientras las no renovables tienen un factor base
         non_renewable_factor = 0.5  # kg CO2/kWh
         return non_renewable_factor * (1 - self.renewable_adoption)
-    
+
 # Simular consumo base para cada tipo de usuario con distribuciones más realistas
 def generate_base_consumption(num_entities, entity_type, hour_of_day, day_type="weekday", seed=None):
     """
@@ -254,6 +253,7 @@ def generate_markov_states(steps: int, hour_start: int = 0, day_type: str = 'wee
         multiplier_results.append(demand_multipliers[current])
 
     return state_results, multiplier_results
+
 def calculate_consumer_elasticity(consumer_type: str, price: float, state: str, base_price: float = 0.15) -> float:
     """
     Calcula la elasticidad del consumidor basada en el tipo, precio y estado de la demanda
@@ -520,7 +520,7 @@ def simulate_demand(params, strategy):
             # Cada simulación con su propio sistema energético
             energy_system = EnergySystem()
             # Variamos la semilla y la hora de inicio para cada simulación
-            seed = int(time.time()) + i * 100  # Importar time al principio del archivo
+            seed = int(time.time()) + i * 100  # Ahora time.time() funciona correctamente
             hour_start = (params.hour_start + i % 24) % 24  # Variar hora de inicio basada en la especificada
             day_type = params.day_type  # Mantener el tipo de día especificado
             if i % 7 >= 5:  # Para el 30% de las muestras, cambiar el tipo de día
@@ -576,8 +576,10 @@ def simulate_demand(params, strategy):
             "cost_savings": cost_savings,
             "monte_carlo_samples": params.montecarlo_samples,
             "fixed_demand": fixed_demand,
-            "network_data": network_data
+            "network_data": network_data,
+            "strategy": strategy
         }
+        
         # Incluir estado final del sistema energético
         if strategy == 'smart_grid':
             result["final_energy_system"] = {
@@ -658,4 +660,3 @@ def generate_network_data(params):
         "businesses": businesses,
         "industries": industries
     }
-    
