@@ -475,9 +475,11 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
     if strategy in ['demand_response', 'smart_grid']:
         # Crear sistema de referencia para comparar ahorro
         ref_system = EnergySystem(energy_system.price_history[0])
+        # Usar la misma semilla para comparación consistente
+        ref_seed = seed if seed is not None else None
         ref_result = simulate_demand_single_run(
             params, 'fixed', ref_system, 
-            seed, hour_start, day_type
+            ref_seed, hour_start, day_type
         )
         ref_peak = ref_result['peak_demand']
         ref_emissions = ref_result['total_emissions']
@@ -504,7 +506,7 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
         }
     }
 
-def simulate_demand(params, strategy):
+def simulate_demand(params, strategy, system=None):
     """
     Ejecuta una simulación completa con los paradigmas seleccionados.
     
@@ -527,126 +529,181 @@ def simulate_demand(params, strategy):
     # Generar datos de red para visualización (siempre, independientemente de la estrategia)
     network_data = generate_network_data(params)
     
-    # Primero, ejecutar siempre una simulación con estrategia "fixed" para comparación
-    fixed_params = SimulationParams(
-        num_homes=params.num_homes,
-        num_commercial=params.num_commercial,
-        num_industrial=params.num_industrial,
-        hours=params.hours,
-        montecarlo_samples=1,
-        strategy="fixed",
-        hour_start=params.hour_start,
-        day_type=params.day_type
-    )
+    # Variables para almacenar la simulación de referencia
+    fixed_demand = None
     
-    # Solo necesitamos ejecutar esta simulación si no estamos ya en "fixed"
+    # Si la estrategia NO es "fixed", ejecutar simulación de referencia
     if strategy != "fixed":
-        fixed_result = simulate_demand_single_run(fixed_params, "fixed", EnergySystem())
+        # Crear sistema energético independiente para referencia
+        fixed_system = EnergySystem()
+        
+        # Usar misma semilla y parámetros para comparación justa
+        seed_to_use = 42  # Semilla por defecto
+        if hasattr(params, 'seed') and params.seed is not None:
+            seed_to_use = params.seed
+            
+        fixed_result = simulate_demand_single_run(
+            params, 
+            "fixed",
+            fixed_system, 
+            seed=seed_to_use,
+            hour_start=params.hour_start,
+            day_type=params.day_type
+        )
+        
+        # Solo incluir campos definidos en el modelo Pydantic
         fixed_demand = {
             "peak_demand": fixed_result["peak_demand"],
             "average_demand": fixed_result["average_demand"],
             "time_series": fixed_result["time_series"]
         }
-    else:
-        fixed_demand = None
     
-    # Si se solicita Monte Carlo y más de 1 muestra
+    # Monte Carlo o simulación única
     if params.montecarlo_samples > 1:
         # Ejecutar múltiples simulaciones
         results = []
+        # Manejar correctamente la semilla
+        if hasattr(params, 'seed') and params.seed is not None:
+            base_seed = params.seed
+        else:
+            base_seed = int(time.time())
+        
         for i in range(params.montecarlo_samples):
-            # Cada simulación con su propio sistema energético
             energy_system = EnergySystem()
-            # Variamos la semilla y la hora de inicio para cada simulación
-            seed = int(time.time()) + i * 100  # Ahora time.time() funciona correctamente
-            hour_start = (params.hour_start + i % 24) % 24  # Variar hora de inicio basada en la especificada
-            day_type = params.day_type  # Mantener el tipo de día especificado
-            if i % 7 >= 5:  # Para el 30% de las muestras, cambiar el tipo de día
+            # Semillas incrementales para reproducibilidad
+            simulation_seed = base_seed + i
+            
+            # Variación controlada de parámetros
+            hour_start = params.hour_start
+            day_type = params.day_type
+            
+            # Para algunas muestras, variar el tipo de día (30% weekend)
+            if i % 10 >= 7:  # 30% de las muestras
                 day_type = "weekend" if day_type == "weekday" else "weekday"
             
-            # Ejecutar simulación individual y guardar resultados
             result = simulate_demand_single_run(
-                params, strategy, energy_system, seed, hour_start, day_type
+                params, strategy, energy_system, 
+                simulation_seed, hour_start, day_type
             )
             results.append(result)
         
-        # Calcular estadísticas - sin asteriscos en axis
-        time_series_mean = np.mean([r["time_series"] for r in results], axis=0).tolist()
-        time_series_std = np.std([r["time_series"] for r in results], axis=0).tolist()
-        price_series_mean = np.mean([r["price_series"] for r in results], axis=0).tolist()
+        # Calcular estadísticas robustas
+        time_series_data = [r["time_series"] for r in results]
+        price_series_data = [r["price_series"] for r in results]
+        
+        # Validar que todas las series tengan la misma longitud
+        expected_length = params.hours
+        valid_time_series = [ts for ts in time_series_data if len(ts) == expected_length]
+        valid_price_series = [ps for ps in price_series_data if len(ps) == expected_length]
+        
+        if not valid_time_series:
+            raise ValueError("No se generaron series de tiempo válidas en Monte Carlo")
+        
+        time_series_mean = np.mean(valid_time_series, axis=0).tolist()
+        time_series_std = np.std(valid_time_series, axis=0).tolist()
+        price_series_mean = np.mean(valid_price_series, axis=0).tolist()
+        
+        # Métricas agregadas
         peak_demands = [r["peak_demand"] for r in results]
         avg_demands = [r["average_demand"] for r in results]
         emission_reductions = [r["reduced_emissions"] for r in results]
         
-        # Calcular intervalos de confianza (95%)
-        confidence_level = 1.96  # 95% confianza
-        sample_size = params.montecarlo_samples
+        # Intervalos de confianza (95%)
+        confidence_level = 1.96
+        sample_size = len(results)
+        
         peak_std = np.std(peak_demands)
         peak_error = confidence_level * peak_std / np.sqrt(sample_size)
+        
         avg_std = np.std(avg_demands)
         avg_error = confidence_level * avg_std / np.sqrt(sample_size)
+        
         emission_std = np.std(emission_reductions)
         emission_error = confidence_level * emission_std / np.sqrt(sample_size)
         
         # Calcular ahorro de costos
-        avg_price = np.mean(price_series_mean)
-        if fixed_demand:
+        cost_savings = 0
+        if fixed_demand and strategy != "fixed":
+            avg_price = np.mean(price_series_mean)
             avg_fixed_demand = np.mean(fixed_demand["time_series"])
             avg_dr_demand = np.mean(time_series_mean)
             cost_savings = (avg_fixed_demand - avg_dr_demand) * params.hours * avg_price
-        else:
-            cost_savings = 0
         
-        # Resultados finales con estadísticas
+        # Estructura de respuesta consistente
         result = {
             "time_series": time_series_mean,
             "time_series_std": time_series_std,
             "price_series": price_series_mean,
-            "peak_demand": np.mean(peak_demands),
-            "peak_demand_std": peak_std,
-            "peak_demand_confidence": peak_error,
-            "average_demand": np.mean(avg_demands),
-            "average_demand_std": avg_std,
-            "average_demand_confidence": avg_error,
-            "reduced_emissions": np.mean(emission_reductions),
-            "reduced_emissions_std": emission_std,
-            "reduced_emissions_confidence": emission_error,
-            "cost_savings": cost_savings,
+            "peak_demand": float(np.mean(peak_demands)),
+            "peak_demand_std": float(peak_std),
+            "peak_demand_confidence": float(peak_error),
+            "average_demand": float(np.mean(avg_demands)),
+            "average_demand_std": float(avg_std),
+            "average_demand_confidence": float(avg_error),
+            "reduced_emissions": float(np.mean(emission_reductions)),
+            "reduced_emissions_std": float(emission_std),
+            "reduced_emissions_confidence": float(emission_error),
+            "cost_savings": float(cost_savings),
             "monte_carlo_samples": params.montecarlo_samples,
             "fixed_demand": fixed_demand,
             "network_data": network_data,
-            "strategy": strategy
+            "strategy": strategy,  # AÑADIR ESTRATEGIA A LA RESPUESTA
+            "hours": params.hours
         }
         
-        # Incluir estado final del sistema energético
-        if strategy == 'smart_grid':
-            result["final_energy_system"] = {
-                "price": energy_system.energy_price,
-                "renewable_adoption": energy_system.renewable_adoption,
-                "storage_capacity": energy_system.storage_capacity
-            }
-        return result
-    else:
-        # Ejecutar una sola simulación sin Monte Carlo
-        single_result = simulate_demand_single_run(params, strategy)
+        # Estado final del sistema energético
+        if results:
+            last_result = results[-1]
+            if "energy_system_state" in last_result:
+                result["final_energy_system"] = last_result["energy_system_state"]
         
-        # Calcular ahorro de costos basado en precio promedio
+        return result
+    
+    else:
+        # Simulación única
+        energy_system = EnergySystem() if system is None else system
+        # Manejar correctamente la semilla para simulación única
+        single_seed = None
+        if hasattr(params, 'seed') and params.seed is not None:
+            single_seed = params.seed
+        
+        single_result = simulate_demand_single_run(
+            params, strategy, energy_system,
+            seed=single_seed,
+            hour_start=params.hour_start,
+            day_type=params.day_type
+        )
+        
+        # Calcular ahorro de costos
+        cost_savings = 0
         if fixed_demand and strategy != "fixed":
             avg_price = np.mean(single_result["price_series"])
             avg_fixed_demand = np.mean(fixed_demand["time_series"])
             avg_dr_demand = np.mean(single_result["time_series"])
             cost_savings = (avg_fixed_demand - avg_dr_demand) * params.hours * avg_price
-        else:
-            cost_savings = 0
         
-        # Añadir datos adicionales al resultado
-        single_result["cost_savings"] = cost_savings
-        single_result["fixed_demand"] = fixed_demand
-        single_result["network_data"] = network_data
+        # Convertir a tipos serializables y estructura consistente
+        result = {
+            "time_series": single_result["time_series"],
+            "price_series": single_result["price_series"],
+            "peak_demand": float(single_result["peak_demand"]),
+            "average_demand": float(single_result["average_demand"]),
+            "reduced_emissions": float(single_result["reduced_emissions"]),
+            "cost_savings": float(cost_savings),
+            "monte_carlo_samples": 1,
+            "fixed_demand": fixed_demand,
+            "network_data": network_data,
+            "strategy": strategy,  # AÑADIR ESTRATEGIA A LA RESPUESTA
+            "hours": params.hours
+        }
         
-        return single_result
+        # Estado final del sistema energético
+        if "energy_system_state" in single_result:
+            result["final_energy_system"] = single_result["energy_system_state"]
+        
+        return result
 
-# Normaliza cada fila del conjunto de matrices - Corregido sin asteriscos
+# Normaliza cada fila del conjunto de matrices
 def normalize_transition_matrix(matrix):
     matrix = np.array(matrix, dtype=np.float64)
     row_sums = matrix.sum(axis=1)
