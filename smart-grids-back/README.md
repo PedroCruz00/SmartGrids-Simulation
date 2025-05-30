@@ -292,7 +292,7 @@ python -m uvicorn main:app --port 8001
 - **Pedro Cruz**
 - **Jhon Castro**
 - **Daniel Arévalo**
-- **Alex Hernández**
+- **Daniel Benavides**
 
 ## 🔗 Enlaces Útiles
 

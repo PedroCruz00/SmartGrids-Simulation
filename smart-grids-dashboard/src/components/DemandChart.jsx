@@ -79,7 +79,31 @@ export default function DemandChart({
   // Si no hay datos, no renderizar
   if (!data || !data.length) {
     console.log("No hay datos para renderizar");
-    return <div className="p-4 text-gray-500">No hay datos para mostrar</div>;
+    return (
+      <div className="flex items-center justify-center h-96 bg-gray-50 dark:bg-gray-800 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600">
+        <div className="text-center">
+          <svg
+            className="mx-auto h-12 w-12 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+            />
+          </svg>
+          <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+            No hay datos disponibles
+          </h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Ejecute una simulación para ver los resultados
+          </p>
+        </div>
+      </div>
+    );
   }
 
   // Función para obtener etiquetas dinámicas según la estrategia
@@ -185,8 +209,8 @@ export default function DemandChart({
       }
     }
 
-    // Si tenemos datos de precio, añadirlos
-    if (typeof item.price === "number") {
+    // *** CORRECCIÓN: Solo añadir precio si NO es estrategia "fixed" ***
+    if (strategy !== "fixed" && typeof item.price === "number") {
       baseEntry.price = item.price;
     }
 
@@ -220,7 +244,29 @@ export default function DemandChart({
 
   if (allDemandValues.length === 0) {
     return (
-      <div className="p-4 text-gray-500">No hay datos válidos para mostrar</div>
+      <div className="flex items-center justify-center h-96 bg-gray-50 dark:bg-gray-800 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600">
+        <div className="text-center">
+          <svg
+            className="mx-auto h-12 w-12 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z"
+            />
+          </svg>
+          <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+            Datos inválidos
+          </h3>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            No se pudieron procesar los datos de demanda
+          </p>
+        </div>
+      </div>
     );
   }
 
@@ -237,6 +283,10 @@ export default function DemandChart({
   // Determinar si usar un gráfico simple o compuesto
   const useComposedChart =
     showConfidence && finalData.some((d) => d.dr_lower !== undefined);
+
+  // *** VERIFICAR SI HAY DATOS DE PRECIO PARA MOSTRAR ***
+  const hasPriceData =
+    strategy !== "fixed" && finalData.some((d) => d.price !== undefined);
 
   // Tooltip personalizado mejorado para mejor información
   const CustomTooltip = ({ active, payload, label }) => {
@@ -277,8 +327,8 @@ export default function DemandChart({
               </div>
             )}
 
-            {/* Mostrar precio si está disponible */}
-            {priceEntry && (
+            {/* Mostrar precio solo si está disponible y NO es modo fixed */}
+            {priceEntry && strategy !== "fixed" && (
               <div className="flex justify-between items-center">
                 <span
                   style={{ color: priceEntry.color }}
@@ -328,6 +378,15 @@ export default function DemandChart({
                 </p>
               </div>
             )}
+
+          {/* Mensaje especial para modo fixed */}
+          {strategy === "fixed" && (
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                💡 Escenario base sin optimización
+              </p>
+            </div>
+          )}
         </div>
       );
     }
@@ -335,249 +394,524 @@ export default function DemandChart({
   };
 
   return (
-    <div>
-      <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-        Comparativa de Demanda Energética
-      </h2>
-      <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">
-        {strategy !== "fixed" && (
-          <span>{currentStrategyDescription} vs línea base</span>
-        )}
-        {strategy === "fixed" && (
-          <span>Perfil de demanda sin optimizaciones (línea base)</span>
-        )}
-        {showConfidence && (
-          <span className="ml-2 text-blue-600 dark:text-blue-400">
-            • Con intervalos de confianza Monte Carlo
-          </span>
-        )}
-      </p>
-
-      <div className="h-96 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-        <ResponsiveContainer width="100%" height="100%">
-          {useComposedChart ? (
-            <ComposedChart
-              data={finalData}
-              margin={{
-                top: 20,
-                right: 40,
-                left: 20,
-                bottom: 40,
-              }}
+    <div className="space-y-6">
+      {/* Header mejorado con iconos y mejor organización */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center">
+          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-500 rounded-lg flex items-center justify-center mr-4">
+            <svg
+              className="w-6 h-6 text-white"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis
-                dataKey="hour"
-                label={{
-                  value: "Hora del día",
-                  position: "insideBottom",
-                  offset: -10,
-                  style: { textAnchor: "middle" },
-                }}
-                tick={{ fontSize: 12 }}
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
               />
-              <YAxis
-                domain={yAxisDomain}
-                label={{
-                  value: "Demanda (kW)",
-                  angle: -90,
-                  position: "insideLeft",
-                  style: { textAnchor: "middle" },
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+              {strategy === "fixed"
+                ? "Perfil de Demanda Base"
+                : "Comparativa de Demanda Energética"}
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              {strategy !== "fixed" && (
+                <span>{currentStrategyDescription} vs línea base</span>
+              )}
+              {strategy === "fixed" && (
+                <span>Perfil de demanda sin optimizaciones (línea base)</span>
+              )}
+              {showConfidence && (
+                <span className="ml-2 text-blue-600 dark:text-blue-400">
+                  • Con intervalos de confianza Monte Carlo
+                </span>
+              )}
+            </p>
+          </div>
+        </div>
+
+        {/* Indicadores de estrategia */}
+        <div className="text-right">
+          <div
+            className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${
+              colors.primary === "#3b82f6"
+                ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200"
+                : colors.primary === "#10b981"
+                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200"
+                : "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200"
+            }`}
+          >
+            {strategy === "fixed" && "📊"}
+            {strategy === "demand_response" && "⚡"}
+            {strategy === "smart_grid" && "🔋"}
+            <span className="ml-1">{currentStrategyLabel}</span>
+          </div>
+          {showConfidence && (
+            <div className="text-xs text-purple-600 dark:text-purple-400 mt-1">
+              Análisis estadístico
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Gráfico principal */}
+      <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4 text-sm">
+              {strategy !== "fixed" && (
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-gray-400 rounded-full mr-2"></div>
+                  <span className="text-gray-600 dark:text-gray-400">
+                    Referencia (línea discontinua)
+                  </span>
+                </div>
+              )}
+              <div className="flex items-center">
+                <div
+                  className={`w-3 h-3 rounded-full mr-2`}
+                  style={{ backgroundColor: colors.primary }}
+                ></div>
+                <span className="text-gray-600 dark:text-gray-400">
+                  {currentStrategyLabel}
+                </span>
+              </div>
+              {/* Solo mostrar indicador de precio si hay datos de precio */}
+              {hasPriceData && (
+                <div className="flex items-center">
+                  <div className="w-3 h-3 bg-orange-400 rounded-full mr-2"></div>
+                  <span className="text-gray-600 dark:text-gray-400">
+                    Precio dinámico
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              {finalData.length} puntos de datos • Resolución horaria
+              {strategy === "fixed" && (
+                <span className="ml-2 text-blue-600 dark:text-blue-400">
+                  • Escenario base
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="h-96 p-4">
+          <ResponsiveContainer width="100%" height="100%">
+            {useComposedChart ? (
+              <ComposedChart
+                data={finalData}
+                margin={{
+                  top: 20,
+                  right: 40,
+                  left: 20,
+                  bottom: 40,
                 }}
-                tick={{ fontSize: 12 }}
-              />
-              {finalData.some((d) => d.price !== undefined) && (
-                <YAxis
-                  yAxisId="right"
-                  orientation="right"
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#e5e7eb"
+                  opacity={0.5}
+                />
+                <XAxis
+                  dataKey="hour"
                   label={{
-                    value: "Precio ($/kWh)",
-                    angle: 90,
-                    position: "insideRight",
+                    value: "Hora del día",
+                    position: "insideBottom",
+                    offset: -10,
                     style: { textAnchor: "middle" },
                   }}
                   tick={{ fontSize: 12 }}
+                  stroke="#6b7280"
                 />
-              )}
-              <Tooltip content={<CustomTooltip />} />
-              <Legend />
+                <YAxis
+                  domain={yAxisDomain}
+                  label={{
+                    value: "Demanda (kW)",
+                    angle: -90,
+                    position: "insideLeft",
+                    style: { textAnchor: "middle" },
+                  }}
+                  tick={{ fontSize: 12 }}
+                  stroke="#6b7280"
+                />
+                {/* Solo mostrar eje Y derecho si hay datos de precio Y no es modo fixed */}
+                {hasPriceData && (
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    label={{
+                      value: "Precio ($/kWh)",
+                      angle: 90,
+                      position: "insideRight",
+                      style: { textAnchor: "middle" },
+                    }}
+                    tick={{ fontSize: 12 }}
+                    stroke="#6b7280"
+                  />
+                )}
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
 
-              {/* Áreas para el intervalo de confianza primero (fondo) */}
-              {showConfidence && (
-                <Area
-                  type="monotone"
-                  dataKey="dr_upper"
-                  stroke="transparent"
-                  fill={colors.primary}
-                  fillOpacity={0.1}
-                  name="Intervalo Confianza Superior"
-                />
-              )}
-              {showConfidence && (
-                <Area
-                  type="monotone"
-                  dataKey="dr_lower"
-                  stroke="transparent"
-                  fill={colors.primary}
-                  fillOpacity={0.1}
-                  name="Intervalo Confianza Inferior"
-                />
-              )}
+                {/* Áreas para el intervalo de confianza primero (fondo) */}
+                {showConfidence && (
+                  <Area
+                    type="monotone"
+                    dataKey="dr_upper"
+                    stroke="transparent"
+                    fill={colors.primary}
+                    fillOpacity={0.1}
+                    name="Intervalo Confianza Superior"
+                  />
+                )}
+                {showConfidence && (
+                  <Area
+                    type="monotone"
+                    dataKey="dr_lower"
+                    stroke="transparent"
+                    fill={colors.primary}
+                    fillOpacity={0.1}
+                    name="Intervalo Confianza Inferior"
+                  />
+                )}
 
-              {/* Líneas principales con etiquetas dinámicas */}
-              {strategy !== "fixed" && (
+                {/* Líneas principales con etiquetas dinámicas */}
+                {strategy !== "fixed" && (
+                  <Line
+                    type="monotone"
+                    dataKey="fixed_demand"
+                    name={fixedLabel}
+                    stroke={colors.reference}
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    activeDot={{ r: 5 }}
+                    dot={{ r: 1 }}
+                  />
+                )}
+
                 <Line
                   type="monotone"
-                  dataKey="fixed_demand"
-                  name={fixedLabel}
-                  stroke={colors.reference}
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  activeDot={{ r: 5 }}
-                  dot={{ r: 1 }}
+                  dataKey="dr_demand"
+                  name={currentStrategyLabel}
+                  stroke={colors.primary}
+                  strokeWidth={3}
+                  activeDot={{ r: 6 }}
+                  dot={{ r: 2 }}
                 />
-              )}
 
-              <Line
-                type="monotone"
-                dataKey="dr_demand"
-                name={currentStrategyLabel}
-                stroke={colors.primary}
-                strokeWidth={3}
-                activeDot={{ r: 6 }}
-                dot={{ r: 2 }}
-              />
-
-              {/* Línea de precio si está disponible */}
-              {finalData.some((d) => d.price !== undefined) && (
-                <Line
-                  type="monotone"
-                  dataKey="price"
-                  name="Precio Dinámico"
-                  stroke="#f59e0b"
-                  strokeWidth={2}
-                  yAxisId="right"
-                  dot={{ r: 1 }}
-                />
-              )}
-            </ComposedChart>
-          ) : (
-            <LineChart
-              data={finalData}
-              margin={{
-                top: 20,
-                right: 40,
-                left: 20,
-                bottom: 40,
-              }}
-            >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-              <XAxis
-                dataKey="hour"
-                label={{
-                  value: "Hora del día",
-                  position: "insideBottom",
-                  offset: -10,
-                  style: { textAnchor: "middle" },
+                {/* Línea de precio solo si hay datos y no es modo fixed */}
+                {hasPriceData && (
+                  <Line
+                    type="monotone"
+                    dataKey="price"
+                    name="Precio Dinámico"
+                    stroke="#f59e0b"
+                    strokeWidth={2}
+                    yAxisId="right"
+                    dot={{ r: 1 }}
+                  />
+                )}
+              </ComposedChart>
+            ) : (
+              <LineChart
+                data={finalData}
+                margin={{
+                  top: 20,
+                  right: 40,
+                  left: 20,
+                  bottom: 40,
                 }}
-                tick={{ fontSize: 12 }}
-              />
-              <YAxis
-                domain={yAxisDomain}
-                label={{
-                  value: "Demanda (kW)",
-                  angle: -90,
-                  position: "insideLeft",
-                  style: { textAnchor: "middle" },
-                }}
-                tick={{ fontSize: 12 }}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend />
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="#e5e7eb"
+                  opacity={0.5}
+                />
+                <XAxis
+                  dataKey="hour"
+                  label={{
+                    value: "Hora del día",
+                    position: "insideBottom",
+                    offset: -10,
+                    style: { textAnchor: "middle" },
+                  }}
+                  tick={{ fontSize: 12 }}
+                  stroke="#6b7280"
+                />
+                <YAxis
+                  domain={yAxisDomain}
+                  label={{
+                    value: "Demanda (kW)",
+                    angle: -90,
+                    position: "insideLeft",
+                    style: { textAnchor: "middle" },
+                  }}
+                  tick={{ fontSize: 12 }}
+                  stroke="#6b7280"
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
 
-              {/* Solo mostrar línea de referencia si no estamos en modo fijo */}
-              {strategy !== "fixed" && (
+                {/* Solo mostrar línea de referencia si no estamos en modo fijo */}
+                {strategy !== "fixed" && (
+                  <Line
+                    type="monotone"
+                    dataKey="fixed_demand"
+                    name={fixedLabel}
+                    stroke={colors.reference}
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                    activeDot={{ r: 5 }}
+                    dot={{ r: 1 }}
+                  />
+                )}
+
                 <Line
                   type="monotone"
-                  dataKey="fixed_demand"
-                  name={fixedLabel}
-                  stroke={colors.reference}
-                  strokeWidth={2}
-                  strokeDasharray="5 5"
-                  activeDot={{ r: 5 }}
-                  dot={{ r: 1 }}
+                  dataKey="dr_demand"
+                  name={currentStrategyLabel}
+                  stroke={colors.primary}
+                  strokeWidth={3}
+                  activeDot={{ r: 6 }}
+                  dot={{ r: 2 }}
                 />
-              )}
-
-              <Line
-                type="monotone"
-                dataKey="dr_demand"
-                name={currentStrategyLabel}
-                stroke={colors.primary}
-                strokeWidth={3}
-                activeDot={{ r: 6 }}
-                dot={{ r: 2 }}
-              />
-            </LineChart>
-          )}
-        </ResponsiveContainer>
+              </LineChart>
+            )}
+          </ResponsiveContainer>
+        </div>
       </div>
 
-      {/* Información adicional con etiquetas correctas */}
-      <div className="mt-4 bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-          Resumen del Análisis
-        </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-          <div className="bg-white dark:bg-gray-700 p-3 rounded">
-            <div className="font-medium text-gray-900 dark:text-white">
-              Pico {strategy === "fixed" ? "Actual" : currentStrategyLabel}
+      {/* Panel de análisis mejorado */}
+      <div className="bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-lg p-6 border border-gray-200 dark:border-gray-600">
+        <div className="flex items-center mb-4">
+          <svg
+            className="w-6 h-6 text-blue-500 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+            />
+          </svg>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            {strategy === "fixed"
+              ? "Análisis del Escenario Base"
+              : "Análisis de Resultados"}
+          </h3>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Pico de demanda */}
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                Pico {strategy === "fixed" ? "Base" : currentStrategyLabel}
+              </span>
+              <svg
+                className="w-4 h-4 text-red-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+                />
+              </svg>
             </div>
             <div
-              className="text-xl font-bold"
+              className="text-2xl font-bold"
               style={{ color: colors.primary }}
             >
               {Math.max(...finalData.map((d) => d.dr_demand)).toFixed(1)} kW
             </div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              {strategy === "fixed"
+                ? "Demanda máxima natural"
+                : "Máximo con optimización"}
+            </div>
           </div>
 
+          {/* Referencia (solo si no es fijo) */}
           {strategy !== "fixed" && (
-            <div className="bg-white dark:bg-gray-700 p-3 rounded">
-              <div className="font-medium text-gray-600 dark:text-gray-300">
-                Pico Referencia
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                  Pico Referencia
+                </span>
+                <svg
+                  className="w-4 h-4 text-gray-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+                  />
+                </svg>
               </div>
-              <div className="text-xl font-bold text-gray-500">
+              <div className="text-2xl font-bold text-gray-500">
                 {Math.max(...finalData.map((d) => d.fixed_demand)).toFixed(1)}{" "}
                 kW
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Sin optimización
               </div>
             </div>
           )}
 
-          {strategy !== "fixed" && (
-            <div className="bg-white dark:bg-gray-700 p-3 rounded">
-              <div className="font-medium text-green-700 dark:text-green-300">
-                Reducción Obtenida
+          {/* Reducción obtenida o promedio para modo fijo */}
+          {strategy !== "fixed" ? (
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-green-200 dark:border-green-700 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-green-700 dark:text-green-300">
+                  Reducción Obtenida
+                </span>
+                <svg
+                  className="w-4 h-4 text-green-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 14l-7 7m0 0l-7-7m7 7V3"
+                  />
+                </svg>
               </div>
-              <div className="text-xl font-bold text-green-600">
+              <div className="text-2xl font-bold text-green-600">
                 {(
                   Math.max(...finalData.map((d) => d.fixed_demand)) -
                   Math.max(...finalData.map((d) => d.dr_demand))
                 ).toFixed(1)}{" "}
                 kW
-                <span className="text-sm ml-1">
-                  (
-                  {(
-                    ((Math.max(...finalData.map((d) => d.fixed_demand)) -
-                      Math.max(...finalData.map((d) => d.dr_demand))) /
-                      Math.max(...finalData.map((d) => d.fixed_demand))) *
-                    100
-                  ).toFixed(1)}
-                  %)
+              </div>
+              <div className="text-sm font-semibold text-green-700 dark:text-green-300">
+                {(
+                  ((Math.max(...finalData.map((d) => d.fixed_demand)) -
+                    Math.max(...finalData.map((d) => d.dr_demand))) /
+                    Math.max(...finalData.map((d) => d.fixed_demand))) *
+                  100
+                ).toFixed(1)}
+                % reducción
+              </div>
+            </div>
+          ) : (
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                  Demanda Promedio
                 </span>
+                <svg
+                  className="w-4 h-4 text-blue-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                  />
+                </svg>
+              </div>
+              <div className="text-2xl font-bold text-blue-600">
+                {(
+                  finalData.reduce((sum, d) => sum + d.dr_demand, 0) /
+                  finalData.length
+                ).toFixed(1)}{" "}
+                kW
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Factor de carga:{" "}
+                {(
+                  (finalData.reduce((sum, d) => sum + d.dr_demand, 0) /
+                    finalData.length /
+                    Math.max(...finalData.map((d) => d.dr_demand))) *
+                  100
+                ).toFixed(1)}
+                %
               </div>
             </div>
           )}
         </div>
+
+        {/* Información especial para modo fixed */}
+        {strategy === "fixed" && (
+          <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-lg border border-blue-200 dark:border-blue-700">
+            <div className="flex items-center mb-2">
+              <svg
+                className="w-5 h-5 text-blue-600 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">
+                Escenario Base - Sin Optimización
+              </span>
+            </div>
+            <p className="text-sm text-blue-700 dark:text-blue-300">
+              Este perfil representa el consumo natural sin estrategias de
+              optimización. No incluye precios dinámicos ya que los consumidores
+              no responden a señales de precio. Este escenario sirve como línea
+              base para comparar el impacto de las estrategias inteligentes.
+            </p>
+          </div>
+        )}
+
+        {/* Información adicional para Monte Carlo */}
+        {showConfidence && (
+          <div className="mt-6 p-4 bg-purple-50 dark:bg-purple-900/30 rounded-lg border border-purple-200 dark:border-purple-700">
+            <div className="flex items-center mb-2">
+              <svg
+                className="w-5 h-5 text-purple-600 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
+                />
+              </svg>
+              <span className="text-sm font-semibold text-purple-800 dark:text-purple-200">
+                Intervalos de Confianza Monte Carlo
+              </span>
+            </div>
+            <p className="text-sm text-purple-700 dark:text-purple-300">
+              Las áreas sombreadas muestran la variabilidad estadística de los
+              resultados al 95% de confianza. Esto indica el rango probable de
+              valores considerando la incertidumbre inherente del sistema.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

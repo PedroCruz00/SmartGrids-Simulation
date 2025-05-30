@@ -338,24 +338,49 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <header className="bg-white dark:bg-gray-800 shadow">
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Simulación de Redes Eléctricas Inteligentes
-          </h1>
-          <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-            Análisis comparativo de estrategias de gestión energética
-          </p>
+      {/* Header mejorado con mejor espaciado */}
+      <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+                Smart Grids Simulation
+              </h1>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                Análisis comparativo de estrategias de gestión energética
+              </p>
+            </div>
+            <div className="hidden sm:block">
+              <div className="flex items-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
+                <div className="flex items-center">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full mr-1"></div>
+                  <span>Monte Carlo</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
+                  <span>Markov</span>
+                </div>
+                <div className="flex items-center">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full mr-1"></div>
+                  <span>Sistemas Dinámicos</span>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="px-4 py-6 sm:px-0">
-          <SimulationForm onSubmit={handleRunSimulation} />
+      <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <div className="space-y-6">
+          {/* Formulario de configuración */}
+          <div className="bg-white shadow-sm rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+            <SimulationForm onSubmit={handleRunSimulation} />
+          </div>
 
+          {/* Mensaje de error */}
           {error && (
-            <div className="mt-6 bg-red-50 border-l-4 border-red-500 p-4 dark:bg-red-900 dark:border-red-700">
-              <div className="flex">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-700">
+              <div className="flex items-center">
                 <div className="flex-shrink-0">
                   <svg
                     className="h-5 w-5 text-red-400"
@@ -370,7 +395,7 @@ export default function Dashboard() {
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm text-red-700 dark:text-red-300">
+                  <p className="text-sm text-red-800 dark:text-red-200">
                     {error}
                   </p>
                 </div>
@@ -378,73 +403,125 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* Estado inicial - información de métodos */}
           {!loading && !simulationResults && (
-            <div className="mt-6 bg-white overflow-hidden shadow rounded-lg dark:bg-gray-800">
-              <div className="px-4 py-5 sm:p-6">
-                <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                  Métodos de Simulación Utilizados
+            <div className="bg-white shadow-sm rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+              <div className="px-6 py-5">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+                  Métodos de Simulación Avanzados
                 </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="bg-blue-50 p-4 rounded-lg dark:bg-blue-900">
-                    <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
-                      Monte Carlo
-                    </h3>
-                    <p className="text-sm text-blue-700 dark:text-blue-300">
-                      Ejecuta múltiples simulaciones con diferentes condiciones
-                      iniciales para obtener distribuciones estadísticas.
-                      Permite cuantificar la incertidumbre en las predicciones y
-                      calcular intervalos de confianza.
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200 dark:from-blue-900/30 dark:to-blue-800/30 dark:border-blue-700">
+                    <div className="flex items-center mb-2">
+                      <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center mr-3">
+                        <span className="text-white text-sm font-bold">MC</span>
+                      </div>
+                      <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                        Monte Carlo
+                      </h3>
+                    </div>
+                    <p className="text-sm text-blue-800 dark:text-blue-200">
+                      Múltiples simulaciones con condiciones iniciales
+                      aleatorias para cuantificar incertidumbre y obtener
+                      intervalos de confianza estadísticos.
                     </p>
                   </div>
-                  <div className="bg-green-50 p-4 rounded-lg dark:bg-green-900">
-                    <h3 className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
-                      Cadenas de Markov
-                    </h3>
-                    <p className="text-sm text-green-700 dark:text-green-300">
-                      Modelan las transiciones entre estados de demanda
-                      energética, capturando la naturaleza estocástica del
-                      consumo a lo largo del tiempo con dependencias temporales.
+
+                  <div className="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200 dark:from-green-900/30 dark:to-green-800/30 dark:border-green-700">
+                    <div className="flex items-center mb-2">
+                      <div className="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center mr-3">
+                        <span className="text-white text-sm font-bold">MK</span>
+                      </div>
+                      <h3 className="text-sm font-semibold text-green-900 dark:text-green-100">
+                        Cadenas de Markov
+                      </h3>
+                    </div>
+                    <p className="text-sm text-green-800 dark:text-green-200">
+                      Modelado estocástico de transiciones entre estados de
+                      demanda con dependencias temporales y patrones de consumo
+                      realistas.
                     </p>
                   </div>
-                  <div className="bg-purple-50 p-4 rounded-lg dark:bg-purple-900">
-                    <h3 className="text-sm font-medium text-purple-800 dark:text-purple-200 mb-2">
-                      Dinámica de Sistemas
-                    </h3>
-                    <p className="text-sm text-purple-700 dark:text-purple-300">
-                      Simula las retroalimentaciones entre precio, adopción de
-                      renovables y almacenamiento de energía, modelando cómo
-                      estos factores evolucionan e interactúan con el tiempo.
+
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200 dark:from-purple-900/30 dark:to-purple-800/30 dark:border-purple-700">
+                    <div className="flex items-center mb-2">
+                      <div className="w-8 h-8 bg-purple-500 rounded-lg flex items-center justify-center mr-3">
+                        <span className="text-white text-sm font-bold">DS</span>
+                      </div>
+                      <h3 className="text-sm font-semibold text-purple-900 dark:text-purple-100">
+                        Dinámica de Sistemas
+                      </h3>
+                    </div>
+                    <p className="text-sm text-purple-800 dark:text-purple-200">
+                      Retroalimentaciones entre precios, adopción de renovables
+                      y almacenamiento, modelando la evolución del sistema
+                      energético.
                     </p>
                   </div>
-                  <div className="bg-orange-50 p-4 rounded-lg dark:bg-orange-900">
-                    <h3 className="text-sm font-medium text-orange-800 dark:text-orange-200 mb-2">
-                      Eventos Discretos
-                    </h3>
-                    <p className="text-sm text-orange-700 dark:text-orange-300">
-                      El sistema avanza en pasos de tiempo discretos (horas),
-                      actualizando el estado del sistema en cada paso según las
-                      condiciones y reglas definidas.
+
+                  <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-4 rounded-lg border border-orange-200 dark:from-orange-900/30 dark:to-orange-800/30 dark:border-orange-700">
+                    <div className="flex items-center mb-2">
+                      <div className="w-8 h-8 bg-orange-500 rounded-lg flex items-center justify-center mr-3">
+                        <span className="text-white text-sm font-bold">ED</span>
+                      </div>
+                      <h3 className="text-sm font-semibold text-orange-900 dark:text-orange-100">
+                        Eventos Discretos
+                      </h3>
+                    </div>
+                    <p className="text-sm text-orange-800 dark:text-orange-200">
+                      Simulación horaria que actualiza el estado del sistema
+                      según condiciones cambiantes y reglas de optimización.
                     </p>
+                  </div>
+                </div>
+
+                <div className="mt-6 bg-gray-50 rounded-lg p-4 border border-gray-200 dark:bg-gray-700/50 dark:border-gray-600">
+                  <div className="flex items-center justify-center text-gray-600 dark:text-gray-300">
+                    <svg
+                      className="w-5 h-5 mr-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    <span className="text-sm">
+                      Configure los parámetros arriba y ejecute una simulación
+                      para ver los resultados
+                    </span>
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          {loading ? (
-            <div className="flex justify-center items-center mt-12">
-              <Loader />
+          {/* Estado de carga */}
+          {loading && (
+            <div className="bg-white shadow-sm rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+              <div className="px-6 py-12 flex justify-center">
+                <Loader />
+              </div>
             </div>
-          ) : simulationResults ? (
-            <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-              <div className="bg-white overflow-hidden shadow rounded-lg dark:bg-gray-800">
-                <div className="px-4 py-5 sm:p-6">
+          )}
+
+          {/* Resultados de la simulación */}
+          {simulationResults && (
+            <div className="space-y-6">
+              {/* Panel de métricas - ancho completo mejorado */}
+              <div className="bg-white shadow-sm rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                <div className="px-6 py-5">
                   <MetricsPanel data={simulationResults.metrics} />
                 </div>
               </div>
 
-              <div className="bg-white overflow-hidden shadow rounded-lg dark:bg-gray-800">
-                <div className="px-4 py-5 sm:p-6">
+              {/* Gráfico de demanda - ancho completo */}
+              <div className="bg-white shadow-sm rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                <div className="px-6 py-5">
                   <DemandChart
                     data={simulationResults.demand_data}
                     showConfidence={
@@ -455,18 +532,37 @@ export default function Dashboard() {
                 </div>
               </div>
 
-              <div className="lg:col-span-2 bg-white overflow-hidden shadow rounded-lg dark:bg-gray-800">
-                <div className="px-4 py-5 sm:p-6" style={{ height: "500px" }}>
-                  <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
-                    Red de Consumidores
-                  </h2>
+              {/* Red de consumidores - optimizada para pantalla completa */}
+              <div className="bg-white shadow-sm rounded-lg border border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+                <div className="h-[600px]">
                   <NodeNetwork data={simulationResults.network_data} />
                 </div>
               </div>
             </div>
-          ) : null}
+          )}
         </div>
       </main>
+
+      {/* Footer mejorado */}
+      <footer className="mt-12 bg-white border-t border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between text-sm text-gray-500 dark:text-gray-400">
+            <div className="flex items-center space-x-4">
+              <span>Smart Grids Simulation v2.0</span>
+              <span className="hidden sm:inline">•</span>
+              <span className="hidden sm:inline">
+                Simulación avanzada de redes eléctricas
+              </span>
+            </div>
+            <div className="flex items-center space-x-3">
+              <span className="hidden md:inline">Desarrollado por:</span>
+              <span className="font-medium">
+                Pedro Cruz, Jhon Castro, Daniel Arévalo, Daniel Benavides
+              </span>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

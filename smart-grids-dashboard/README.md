@@ -402,7 +402,7 @@ Este proyecto está bajo la Licencia MIT - ver el archivo [LICENSE](LICENSE) par
 - **Pedro Cruz**
 - **Jhon Castro**
 - **Daniel Arévalo**
-- **Alex Hernández**
+- **Daniel Benavides**
 
 ## 🔗 Enlaces Útiles
 
