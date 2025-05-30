@@ -78,29 +78,69 @@ export default function DemandChart({ data, showConfidence = false }) {
   // Procesar datos para añadir intervalos de confianza si están disponibles
   const chartData = data.map((item, index) => {
     const baseEntry = {
-      hour: item.hour !== undefined ? item.hour : index,
-      fixed_demand: item.fixed_demand || 0,
-      dr_demand: item.dr_demand || 0,
+      hour: typeof item.hour === "number" ? item.hour : index,
+      fixed_demand:
+        typeof item.fixed_demand === "number" ? item.fixed_demand : 0,
+      dr_demand: typeof item.dr_demand === "number" ? item.dr_demand : 0,
     };
 
     // Si tenemos datos de Monte Carlo con desviación estándar, añadir límites
-    if (showConfidence && item.dr_demand_std) {
-      const confidenceFactor = 1.96;
+    if (
+      showConfidence &&
+      typeof item.dr_demand_std === "number" &&
+      item.dr_demand_std > 0
+    ) {
+      const confidenceFactor = 1.96; // Para intervalo de confianza del 95%
+      baseEntry.dr_demand_std = item.dr_demand_std;
       baseEntry.dr_lower = Math.max(
         0,
         item.dr_demand - confidenceFactor * item.dr_demand_std
       );
       baseEntry.dr_upper =
         item.dr_demand + confidenceFactor * item.dr_demand_std;
+
+      // También calcular límites para fixed_demand si tiene desviación estándar
+      if (
+        typeof item.fixed_demand_std === "number" &&
+        item.fixed_demand_std > 0
+      ) {
+        baseEntry.fixed_demand_std = item.fixed_demand_std;
+        baseEntry.fixed_lower = Math.max(
+          0,
+          item.fixed_demand - confidenceFactor * item.fixed_demand_std
+        );
+        baseEntry.fixed_upper =
+          item.fixed_demand + confidenceFactor * item.fixed_demand_std;
+      }
     }
 
     // Si tenemos datos de precio, añadirlos
-    if (item.price) {
+    if (typeof item.price === "number") {
       baseEntry.price = item.price;
     }
 
     return baseEntry;
   });
+
+  // Validar que tenemos datos válidos
+  const validChartData = chartData.filter(
+    (item) =>
+      typeof item.fixed_demand === "number" &&
+      typeof item.dr_demand === "number" &&
+      !isNaN(item.fixed_demand) &&
+      !isNaN(item.dr_demand)
+  );
+
+  if (validChartData.length !== chartData.length) {
+    console.warn(
+      `⚠️ Filtrados ${
+        chartData.length - validChartData.length
+      } puntos de datos inválidos`
+    );
+  }
+
+  // Usar datos validados
+  const finalChartData = validChartData.length > 0 ? validChartData : chartData;
 
   // Calcular rangos para mejor visualización
   const allDemandValues = chartData
@@ -120,26 +160,64 @@ export default function DemandChart({ data, showConfidence = false }) {
   const useComposedChart =
     showConfidence && chartData.some((d) => d.dr_lower !== undefined);
 
-  // Tooltip personalizado para mejor información
+  // Tooltip personalizado mejorado para mejor información
   const CustomTooltip = ({ active, payload, label }) => {
     if (active && payload && payload.length) {
+      // Encontrar los valores principales (fixed_demand y dr_demand)
+      const fixedEntry = payload.find(
+        (entry) => entry.dataKey === "fixed_demand"
+      );
+      const drEntry = payload.find((entry) => entry.dataKey === "dr_demand");
+      const priceEntry = payload.find((entry) => entry.dataKey === "price");
+
       return (
         <div className="bg-white dark:bg-gray-800 p-3 border border-gray-300 dark:border-gray-600 rounded shadow-lg">
-          <p className="font-semibold">{`Hora: ${label}`}</p>
-          {payload.map((entry, index) => (
-            <p key={index} style={{ color: entry.color }}>
-              {`${entry.name}: ${entry.value.toFixed(2)} ${
-                entry.name.includes("Precio") ? "$/kWh" : "kW"
-              }`}
-            </p>
-          ))}
-          {payload.length >= 2 && (
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              {`Diferencia: ${Math.abs(
-                payload[0].value - payload[1].value
-              ).toFixed(2)} kW`}
+          <p className="font-semibold mb-2">{`Hora: ${label}:00`}</p>
+
+          {/* Mostrar demandas principales */}
+          {payload
+            .filter((entry) =>
+              ["fixed_demand", "dr_demand"].includes(entry.dataKey)
+            )
+            .map((entry, index) => (
+              <p key={index} style={{ color: entry.color }} className="mb-1">
+                {`${entry.name}: ${entry.value.toFixed(2)} kW`}
+              </p>
+            ))}
+
+          {/* Mostrar precio si está disponible */}
+          {priceEntry && (
+            <p style={{ color: priceEntry.color }} className="mb-1">
+              {`${priceEntry.name}: $${priceEntry.value.toFixed(3)}/kWh`}
             </p>
           )}
+
+          {/* Mostrar diferencia entre estrategias */}
+          {fixedEntry && drEntry && (
+            <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {`Reducción: ${(fixedEntry.value - drEntry.value).toFixed(
+                  2
+                )} kW`}
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {`(${(
+                  ((fixedEntry.value - drEntry.value) / fixedEntry.value) *
+                  100
+                ).toFixed(1)}%)`}
+              </p>
+            </div>
+          )}
+
+          {/* Mostrar intervalos de confianza si están disponibles */}
+          {showConfidence &&
+            payload.some((entry) => entry.dataKey === "dr_demand_std") && (
+              <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                <p className="text-xs text-gray-500 dark:text-gray-500">
+                  Intervalo de confianza 95% mostrado
+                </p>
+              </div>
+            )}
         </div>
       );
     }

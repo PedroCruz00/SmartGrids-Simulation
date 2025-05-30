@@ -13,173 +13,249 @@ export default function Dashboard() {
 
   // Función para procesar los datos recibidos del backend
   const processApiResults = (apiResults) => {
-    console.log("Procesando resultados:", apiResults);
+    console.log("=== PROCESANDO RESULTADOS API ===");
+    console.log("Datos recibidos:", apiResults);
 
-    // Verificar que tenemos datos de fixed_demand para comparación
-    const hasFixedData =
-      apiResults.fixed_demand && apiResults.fixed_demand.time_series;
+    // Validación robusta de datos de fixed_demand
+    const hasValidFixedData =
+      apiResults.fixed_demand &&
+      apiResults.fixed_demand.time_series &&
+      Array.isArray(apiResults.fixed_demand.time_series) &&
+      apiResults.fixed_demand.time_series.length ===
+        apiResults.time_series.length;
+
+    console.log("¿Tiene datos fixed_demand válidos?", hasValidFixedData);
+
+    if (hasValidFixedData) {
+      console.log("Datos fixed_demand validados:", {
+        length: apiResults.fixed_demand.time_series.length,
+        peak: apiResults.fixed_demand.peak_demand,
+        average: apiResults.fixed_demand.average_demand,
+      });
+    }
 
     // Determinar estrategia actual
     const currentStrategy = apiResults.strategy || "fixed";
+    console.log("Estrategia actual:", currentStrategy);
 
-    // Construir estructura para el gráfico
+    // Construir estructura para el gráfico con validación mejorada
     const hourlyData = apiResults.time_series.map((value, i) => {
       const entry = {
-        hour: i % 24, // Asegurar que la hora sea 0-23
-        dr_demand: value,
+        hour: i % 24,
+        dr_demand: typeof value === "number" ? value : 0,
       };
 
-      // Añadir datos de consumo fijo para comparación
-      if (hasFixedData) {
-        entry.fixed_demand = apiResults.fixed_demand.time_series[i];
-      } else {
-        // Si no tenemos datos fixed, usar una estimación basada en el valor actual
+      // Lógica para fixed_demand
+      if (hasValidFixedData) {
+        // Usar datos reales de fixed_demand del backend
         entry.fixed_demand =
-          apiResults.strategy === "fixed" ? value : value * 1.15;
+          typeof apiResults.fixed_demand.time_series[i] === "number"
+            ? apiResults.fixed_demand.time_series[i]
+            : value;
+      } else if (currentStrategy === "fixed") {
+        // Si estamos en modo fijo, ambas series son iguales
+        entry.fixed_demand = value;
+      } else {
+        // Para estrategias no-fijas sin datos de referencia, usar estimación conservadora
+        console.warn(
+          `⚠️ No hay datos fixed_demand válidos para estrategia '${currentStrategy}'. Usando estimación.`
+        );
+        entry.fixed_demand = value * 1.12; // Estimación basada en promedio típico
       }
 
       // Añadir desviación estándar si está disponible (Monte Carlo)
-      if (apiResults.time_series_std) {
+      if (
+        apiResults.time_series_std &&
+        typeof apiResults.time_series_std[i] === "number" &&
+        apiResults.time_series_std[i] > 0
+      ) {
         entry.dr_demand_std = apiResults.time_series_std[i];
-
-        // Calcular los límites del intervalo de confianza (95%)
-        const confidenceFactor = 1.96; // Para 95% de confianza
-        entry.dr_lower =
-          entry.dr_demand - confidenceFactor * entry.dr_demand_std;
-        entry.dr_upper =
-          entry.dr_demand + confidenceFactor * entry.dr_demand_std;
       }
 
       // Añadir precios si están disponibles
-      if (apiResults.price_series) {
+      if (
+        apiResults.price_series &&
+        typeof apiResults.price_series[i] === "number"
+      ) {
         entry.price = apiResults.price_series[i];
       }
 
       return entry;
     });
 
-    // Verificar que tenemos datos de red
+    // Verificación de calidad de datos
+    console.log("=== VERIFICACIÓN DE DATOS PROCESADOS ===");
+    if (hourlyData.length > 0) {
+      const fixedValues = hourlyData
+        .map((d) => d.fixed_demand)
+        .filter((v) => typeof v === "number" && v > 0);
+      const drValues = hourlyData
+        .map((d) => d.dr_demand)
+        .filter((v) => typeof v === "number" && v > 0);
+
+      if (fixedValues.length > 0 && drValues.length > 0) {
+        const fixedAvg =
+          fixedValues.reduce((a, b) => a + b, 0) / fixedValues.length;
+        const drAvg = drValues.reduce((a, b) => a + b, 0) / drValues.length;
+        const avgDifference = Math.abs(fixedAvg - drAvg);
+        const percentDifference =
+          (avgDifference / Math.max(fixedAvg, drAvg)) * 100;
+
+        console.log(`Promedio fixed_demand: ${fixedAvg.toFixed(2)} kW`);
+        console.log(`Promedio dr_demand: ${drAvg.toFixed(2)} kW`);
+        console.log(
+          `Diferencia: ${avgDifference.toFixed(
+            2
+          )} kW (${percentDifference.toFixed(1)}%)`
+        );
+
+        if (percentDifference < 1 && currentStrategy !== "fixed") {
+          console.warn(
+            "⚠️ Las diferencias entre estrategias son muy pequeñas (<1%)"
+          );
+        } else {
+          console.log("✅ Las series tienen diferencias apropiadas");
+        }
+      }
+    }
+
+    // Validar y procesar datos de red
     const networkData = apiResults.network_data || {
       homes: [],
       businesses: [],
       industries: [],
     };
-
-    // Verificar que cada componente de la red tiene el formato correcto
     const validatedNetworkData = {
-      homes: networkData.homes
-        ? networkData.homes.map((home) => ({
-            id: home.id || `home-${Math.random().toString(36).substr(2, 9)}`,
+      homes: Array.isArray(networkData.homes)
+        ? networkData.homes.map((home, idx) => ({
+            id: home.id || `home-${idx}`,
             type: "home",
-            consumption: home.consumption || 5,
+            consumption:
+              typeof home.consumption === "number" ? home.consumption : 5,
           }))
         : [],
-      businesses: networkData.businesses
-        ? networkData.businesses.map((business) => ({
-            id:
-              business.id ||
-              `business-${Math.random().toString(36).substr(2, 9)}`,
+      businesses: Array.isArray(networkData.businesses)
+        ? networkData.businesses.map((business, idx) => ({
+            id: business.id || `business-${idx}`,
             type: "business",
-            consumption: business.consumption || 20,
+            consumption:
+              typeof business.consumption === "number"
+                ? business.consumption
+                : 20,
           }))
         : [],
-      industries: networkData.industries
-        ? networkData.industries.map((industry) => ({
-            id:
-              industry.id ||
-              `industry-${Math.random().toString(36).substr(2, 9)}`,
+      industries: Array.isArray(networkData.industries)
+        ? networkData.industries.map((industry, idx) => ({
+            id: industry.id || `industry-${idx}`,
             type: "industry",
-            consumption: industry.consumption || 100,
+            consumption:
+              typeof industry.consumption === "number"
+                ? industry.consumption
+                : 100,
           }))
         : [],
     };
 
-    // Asegurar que los valores necesarios para los cálculos estén definidos
+    // Calcular métricas con validación mejorada
     const avgDemand =
       typeof apiResults.average_demand === "number"
         ? apiResults.average_demand
         : 0;
     const hours = typeof apiResults.hours === "number" ? apiResults.hours : 24;
-
-    // Calcular métricas adicionales con manejo seguro
     const totalEnergyConsumption = avgDemand * hours;
 
     // Calcular precio promedio con validación
     let averagePrice = 0.15; // Valor por defecto
-    if (
-      apiResults.price_series &&
-      Array.isArray(apiResults.price_series) &&
-      apiResults.price_series.length > 0
-    ) {
+    if (apiResults.price_series && Array.isArray(apiResults.price_series)) {
       const validPrices = apiResults.price_series.filter(
-        (price) => typeof price === "number"
+        (price) => typeof price === "number" && price > 0
       );
       if (validPrices.length > 0) {
-        const sumPrices = validPrices.reduce((sum, price) => sum + price, 0);
-        averagePrice = sumPrices / validPrices.length;
+        averagePrice =
+          validPrices.reduce((sum, price) => sum + price, 0) /
+          validPrices.length;
       }
     }
 
     const energyCost = totalEnergyConsumption * averagePrice;
-
-    // Estimar emisiones totales basadas en un factor de emisión estándar
-    const emissionFactor = 0.5; // kg CO2 por kWh (valor típico para una matriz energética mixta)
+    const emissionFactor = 0.5; // kg CO2 por kWh
     const totalEmissions = totalEnergyConsumption * emissionFactor;
 
-    // Construir métricas para el panel con valores seguros
+    // Construir métricas con datos validados del backend
     const metrics = {
-      // Para estrategias no-fijas, usar datos de comparación correctos
+      // Usar datos reales de fixed_demand del backend cuando estén disponibles
       peak_demand_fixed:
-        hasFixedData && typeof apiResults.fixed_demand.peak_demand === "number"
+        hasValidFixedData &&
+        typeof apiResults.fixed_demand.peak_demand === "number"
           ? apiResults.fixed_demand.peak_demand
           : currentStrategy === "fixed"
-          ? apiResults.peak_demand // En modo fijo, usar el valor actual
-          : apiResults.peak_demand * 1.15, // Estimación para comparación
+          ? typeof apiResults.peak_demand === "number"
+            ? apiResults.peak_demand
+            : 0
+          : typeof apiResults.peak_demand === "number"
+          ? apiResults.peak_demand * 1.12
+          : 0,
 
       peak_demand_dr:
         typeof apiResults.peak_demand === "number" ? apiResults.peak_demand : 0,
-
-      peak_demand_confidence: apiResults.peak_demand_confidence || 0,
+      peak_demand_confidence:
+        typeof apiResults.peak_demand_confidence === "number"
+          ? apiResults.peak_demand_confidence
+          : 0,
 
       avg_demand_fixed:
-        hasFixedData &&
+        hasValidFixedData &&
         typeof apiResults.fixed_demand.average_demand === "number"
           ? apiResults.fixed_demand.average_demand
           : currentStrategy === "fixed"
-          ? avgDemand // En modo fijo, usar el valor actual
-          : avgDemand * 1.12, // Estimación para comparación
+          ? avgDemand
+          : avgDemand * 1.08,
 
       avg_demand_dr: avgDemand,
-      avg_demand_confidence: apiResults.average_demand_confidence || 0,
+      avg_demand_confidence:
+        typeof apiResults.average_demand_confidence === "number"
+          ? apiResults.average_demand_confidence
+          : 0,
 
       emissions_reduction:
         typeof apiResults.reduced_emissions === "number"
           ? apiResults.reduced_emissions
           : 0,
-
       emissions_total: isNaN(totalEmissions) ? 0 : totalEmissions,
       emissions_reduction_confidence:
-        apiResults.reduced_emissions_confidence || 0,
+        typeof apiResults.reduced_emissions_confidence === "number"
+          ? apiResults.reduced_emissions_confidence
+          : 0,
 
       cost_savings:
         typeof apiResults.cost_savings === "number"
           ? apiResults.cost_savings
           : 0,
-
       energy_cost: isNaN(energyCost) ? avgDemand * hours * 0.15 : energyCost,
       monte_carlo_samples:
         typeof apiResults.monte_carlo_samples === "number"
           ? apiResults.monte_carlo_samples
           : 1,
 
-      strategy: currentStrategy, // Asegurar que la estrategia se pase correctamente
+      strategy: currentStrategy,
     };
 
-    // Calcular valores derivados adicionales
-    metrics.energy_cost_estimate = metrics.avg_demand_dr * hours * 0.15;
-    metrics.potential_savings = metrics.energy_cost * 0.12;
+    // Calcular valores derivados
+    metrics.energy_cost_estimate = metrics.avg_demand_dr * hours * averagePrice;
+    metrics.potential_savings = Math.max(
+      0,
+      (metrics.avg_demand_fixed - metrics.avg_demand_dr) * hours * averagePrice
+    );
 
-    console.log("Métricas procesadas:", metrics);
+    console.log("=== MÉTRICAS FINALES ===");
+    console.log("Métricas procesadas:", {
+      strategy: metrics.strategy,
+      peak_fixed: metrics.peak_demand_fixed.toFixed(2),
+      peak_dr: metrics.peak_demand_dr.toFixed(2),
+      avg_fixed: metrics.avg_demand_fixed.toFixed(2),
+      avg_dr: metrics.avg_demand_dr.toFixed(2),
+      monte_carlo_samples: metrics.monte_carlo_samples,
+    });
 
     return {
       demand_data: hourlyData,
