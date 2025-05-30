@@ -10,6 +10,7 @@ class SimulationParams(BaseModel):
     strategy: Literal["fixed", "demand_response", "smart_grid"] = "fixed"
     hour_start: int = Field(default=8, alias="start_hour")
     day_type: Literal["weekday", "weekend"] = "weekday"
+    seed: Optional[int] = Field(default=None)  # Semilla para reproducibilidad, por defecto None
 
     class Config:
         validate_by_name = True
@@ -58,3 +59,5 @@ class SimulationResult(BaseModel):
     fixed_demand: Optional[FixedDemandData] = None
     network_data: Optional[NetworkData] = None
     final_energy_system: Optional[Dict] = None
+    strategy: Optional[str] = None  # Estrategia utilizada
+    hours: Optional[int] = None  # Número de horas simuladas

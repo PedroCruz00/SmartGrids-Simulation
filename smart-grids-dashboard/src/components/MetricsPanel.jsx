@@ -26,13 +26,13 @@ export default function MetricsPanel({ data }) {
 
   // Calcular el porcentaje de reducción de pico con protección contra NaN
   const peakReduction =
-    !isFixedMode && peak_demand_fixed && peak_demand_dr
+    !isFixedMode && peak_demand_fixed && peak_demand_dr && peak_demand_fixed > 0
       ? ((peak_demand_fixed - peak_demand_dr) / peak_demand_fixed) * 100
       : 0;
 
   // Calcular el porcentaje de reducción de demanda promedio con protección contra NaN
   const avgReduction =
-    !isFixedMode && avg_demand_fixed && avg_demand_dr
+    !isFixedMode && avg_demand_fixed && avg_demand_dr && avg_demand_fixed > 0
       ? ((avg_demand_fixed - avg_demand_dr) / avg_demand_fixed) * 100
       : 0;
 
@@ -58,13 +58,75 @@ export default function MetricsPanel({ data }) {
   const emissionFactor =
     totalConsumption > 0 ? emissions_total / totalConsumption : 0.5;
 
+  // Función para determinar el estado de eficiencia
+  const getEfficiencyStatus = () => {
+    if (isFixedMode) {
+      return {
+        status: "baseline",
+        text: "Línea Base",
+        color: "text-gray-500",
+        description: "Sin optimización aplicada",
+      };
+    } else {
+      // Solo para estrategias con optimización
+      if (loadFactor >= 60) {
+        return {
+          status: "excellent",
+          text: "Excelente",
+          color: "text-green-600",
+          description: "Uso muy eficiente de la infraestructura",
+        };
+      } else if (loadFactor >= 50) {
+        return {
+          status: "good",
+          text: "Bueno",
+          color: "text-green-500",
+          description: "Uso eficiente de la infraestructura",
+        };
+      } else if (loadFactor >= 40) {
+        return {
+          status: "fair",
+          text: "Regular",
+          color: "text-yellow-500",
+          description: "Hay espacio para mejora",
+        };
+      } else {
+        return {
+          status: "poor",
+          text: "Mejorable",
+          color: "text-orange-500",
+          description: "Oportunidad significativa de mejora",
+        };
+      }
+    }
+  };
+
+  const efficiencyStatus = getEfficiencyStatus();
+
+  // Función para obtener el nombre de la estrategia
+  const getStrategyDisplayName = () => {
+    switch (strategy) {
+      case "fixed":
+        return "Consumo Fijo";
+      case "demand_response":
+        return "Respuesta a la Demanda";
+      case "smart_grid":
+        return "Red Inteligente";
+      default:
+        return "Estrategia Personalizada";
+    }
+  };
+
   return (
     <div>
       <h2 className="text-lg font-medium text-gray-900 dark:text-white mb-4">
         Resultados de la Simulación
+        <span className="ml-2 text-sm font-normal text-blue-600 dark:text-blue-400">
+          ({getStrategyDisplayName()})
+        </span>
         {hasMonteCarlo && (
-          <span className="ml-2 text-sm font-normal text-blue-500">
-            (Monte Carlo: {monte_carlo_samples} muestras)
+          <span className="ml-2 text-sm font-normal text-purple-600 dark:text-purple-400">
+            - Monte Carlo: {monte_carlo_samples} muestras
           </span>
         )}
       </h2>
@@ -79,7 +141,9 @@ export default function MetricsPanel({ data }) {
             {!isFixedMode && peakReduction > 0 && (
               <div className="flex items-center text-green-500">
                 <span className="mr-1">▼</span>
-                <span className="text-sm">{peakReduction.toFixed(1)}%</span>
+                <span className="text-sm font-semibold">
+                  {peakReduction.toFixed(1)}%
+                </span>
               </div>
             )}
           </div>
@@ -89,7 +153,9 @@ export default function MetricsPanel({ data }) {
                 {peak_demand_dr.toFixed(1)} kW
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-300">
-                {isFixedMode ? "Demanda máxima" : "Con respuesta optimizada"}
+                {isFixedMode
+                  ? "Demanda máxima base"
+                  : `Con ${getStrategyDisplayName()}`}
                 {hasMonteCarlo && peak_demand_confidence && (
                   <span className="ml-1 text-blue-500">
                     ±{peak_demand_confidence.toFixed(1)}
@@ -119,7 +185,9 @@ export default function MetricsPanel({ data }) {
             {!isFixedMode && avgReduction > 0 && (
               <div className="flex items-center text-green-500">
                 <span className="mr-1">▼</span>
-                <span className="text-sm">{avgReduction.toFixed(1)}%</span>
+                <span className="text-sm font-semibold">
+                  {avgReduction.toFixed(1)}%
+                </span>
               </div>
             )}
           </div>
@@ -129,7 +197,9 @@ export default function MetricsPanel({ data }) {
                 {avg_demand_dr.toFixed(1)} kW
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-300">
-                {isFixedMode ? "Consumo medio" : "Con respuesta optimizada"}
+                {isFixedMode
+                  ? "Consumo medio base"
+                  : `Con ${getStrategyDisplayName()}`}
                 {hasMonteCarlo && avg_demand_confidence && (
                   <span className="ml-1 text-blue-500">
                     ±{avg_demand_confidence.toFixed(1)}
@@ -150,18 +220,16 @@ export default function MetricsPanel({ data }) {
           </div>
         </div>
 
-        {/* Factor de carga */}
+        {/* Factor de carga mejorado */}
         <div className="bg-gray-50 p-4 rounded-lg dark:bg-gray-700">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-300">
               Factor de Carga
             </h3>
-            <div className="flex items-center">
-              {loadFactor >= 50 ? (
-                <span className="text-green-500 text-sm">✓ Eficiente</span>
-              ) : (
-                <span className="text-yellow-500 text-sm">⚠ Mejorable</span>
-              )}
+            <div className={`flex items-center ${efficiencyStatus.color}`}>
+              <span className="text-sm font-medium">
+                {efficiencyStatus.text}
+              </span>
             </div>
           </div>
           <div className="mt-2">
@@ -169,10 +237,13 @@ export default function MetricsPanel({ data }) {
               {loadFactor.toFixed(1)}%
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-300">
-              {loadFactor >= 50
-                ? "Uso eficiente de la infraestructura"
-                : "Oportunidad de mejora disponible"}
+              {efficiencyStatus.description}
             </p>
+            {!isFixedMode && (
+              <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                Promedio / Pico ratio
+              </div>
+            )}
           </div>
         </div>
 
@@ -184,9 +255,9 @@ export default function MetricsPanel({ data }) {
             </h3>
             {!isFixedMode && emissions_reduction > 0 && (
               <div className="flex items-center text-green-500">
-                <span className="mr-1">▼</span>
-                <span className="text-sm">
-                  {emissions_reduction.toFixed(1)} kg
+                <span className="mr-1">🌱</span>
+                <span className="text-sm font-semibold">
+                  -{emissions_reduction.toFixed(1)} kg
                 </span>
               </div>
             )}
@@ -204,12 +275,12 @@ export default function MetricsPanel({ data }) {
               )}
             </p>
             <div className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-              Factor: {emissionFactor.toFixed(2)} kg CO₂/kWh
+              Factor: {emissionFactor.toFixed(3)} kg CO₂/kWh
             </div>
           </div>
         </div>
 
-        {/* Costo energético */}
+        {/* Costo energético mejorado */}
         <div className="bg-gray-50 p-4 rounded-lg dark:bg-gray-700">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-300">
@@ -218,7 +289,9 @@ export default function MetricsPanel({ data }) {
             {!isFixedMode && dailySavings > 0 && (
               <div className="flex items-center text-green-500">
                 <span className="mr-1">💰</span>
-                <span className="text-sm">${dailySavings.toFixed(2)}</span>
+                <span className="text-sm font-semibold">
+                  ${dailySavings.toFixed(2)}
+                </span>
               </div>
             )}
           </div>
@@ -227,7 +300,7 @@ export default function MetricsPanel({ data }) {
               ${actualEnergyCost.toFixed(2)}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-300">
-              Costo diario de energía
+              {isFixedMode ? "Costo diario base" : "Costo diario optimizado"}
             </p>
             {!isFixedMode && dailySavings > 0 && (
               <div className="mt-1 space-y-1">
@@ -271,13 +344,14 @@ export default function MetricsPanel({ data }) {
       {/* Monte Carlo info */}
       {hasMonteCarlo && (
         <div className="mt-6 bg-blue-50 p-4 rounded-lg dark:bg-blue-900">
-          <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
-            Información Monte Carlo
+          <h3 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2 flex items-center">
+            📊 Análisis Monte Carlo
           </h3>
           <p className="text-sm text-blue-700 dark:text-blue-300">
-            La simulación fue ejecutada {monte_carlo_samples} veces con
-            diferentes condiciones iniciales. Los intervalos de confianza (±) se
-            muestran al 95% de nivel de confianza.
+            Se ejecutaron {monte_carlo_samples} simulaciones con diferentes
+            condiciones iniciales. Los intervalos de confianza (±) muestran la
+            variabilidad al 95% de nivel de confianza, proporcionando una medida
+            de la incertidumbre en los resultados.
           </p>
         </div>
       )}
@@ -285,30 +359,85 @@ export default function MetricsPanel({ data }) {
       {/* Solo en modo fijo: Potencial de mejora */}
       {isFixedMode && (
         <div className="mt-6 bg-green-50 p-4 rounded-lg dark:bg-green-900">
-          <h3 className="text-sm font-medium text-green-800 dark:text-green-200 mb-2">
-            Potencial de Mejora
+          <h3 className="text-sm font-medium text-green-800 dark:text-green-200 mb-2 flex items-center">
+            🎯 Potencial de Optimización
           </h3>
           <p className="text-sm text-green-700 dark:text-green-300 mb-3">
-            Implementando una estrategia de respuesta a la demanda, podrías
-            obtener:
+            Este es el escenario base sin optimizaciones. Implementando
+            estrategias inteligentes, podrías obtener:
           </p>
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-white p-3 rounded shadow-sm dark:bg-green-800">
-              <div className="text-green-600 dark:text-green-200 font-medium">
-                Reducción potencial de pico
+              <div className="text-green-600 dark:text-green-200 font-medium text-sm">
+                Respuesta a la Demanda
               </div>
-              <div className="text-2xl font-bold text-green-700 dark:text-green-100">
-                10-15%
+              <div className="text-lg font-bold text-green-700 dark:text-green-100">
+                10-20% reducción de pico
               </div>
             </div>
             <div className="bg-white p-3 rounded shadow-sm dark:bg-green-800">
-              <div className="text-green-600 dark:text-green-200 font-medium">
-                Ahorro económico estimado
+              <div className="text-green-600 dark:text-green-200 font-medium text-sm">
+                Red Inteligente
               </div>
-              <div className="text-2xl font-bold text-green-700 dark:text-green-100">
-                ${potential_savings.toFixed(2)}
+              <div className="text-lg font-bold text-green-700 dark:text-green-100">
+                15-30% reducción de pico
               </div>
             </div>
+          </div>
+          <div className="mt-3 text-xs text-green-600 dark:text-green-400">
+            💡 Tip: Prueba las otras estrategias para ver el impacto real en tu
+            configuración
+          </div>
+        </div>
+      )}
+
+      {/* Solo para estrategias optimizadas: Resumen de beneficios */}
+      {!isFixedMode && (peakReduction > 0 || avgReduction > 0) && (
+        <div className="mt-6 bg-purple-50 p-4 rounded-lg dark:bg-purple-900">
+          <h3 className="text-sm font-medium text-purple-800 dark:text-purple-200 mb-2 flex items-center">
+            🚀 Beneficios Obtenidos
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+            {peakReduction > 0 && (
+              <div className="text-center">
+                <div className="text-purple-600 dark:text-purple-300 font-semibold text-lg">
+                  {peakReduction.toFixed(1)}%
+                </div>
+                <div className="text-purple-700 dark:text-purple-400">
+                  Reducción de pico
+                </div>
+              </div>
+            )}
+            {avgReduction > 0 && (
+              <div className="text-center">
+                <div className="text-purple-600 dark:text-purple-300 font-semibold text-lg">
+                  {avgReduction.toFixed(1)}%
+                </div>
+                <div className="text-purple-700 dark:text-purple-400">
+                  Reducción promedio
+                </div>
+              </div>
+            )}
+            {dailySavings > 0 && (
+              <div className="text-center">
+                <div className="text-purple-600 dark:text-purple-300 font-semibold text-lg">
+                  ${dailySavings.toFixed(0)}
+                </div>
+                <div className="text-purple-700 dark:text-purple-400">
+                  Ahorro diario
+                </div>
+              </div>
+            )}
+            {emissions_reduction > 0 && (
+              <div className="text-center">
+                <div className="text-purple-600 dark:text-purple-300 font-semibold text-lg">
+                  {emissions_reduction.toFixed(0)} kg
+                </div>
+                <div className="text-purple-700 dark:text-purple-400">
+                  Menos CO₂
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

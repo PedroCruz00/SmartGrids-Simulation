@@ -475,9 +475,11 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
     if strategy in ['demand_response', 'smart_grid']:
         # Crear sistema de referencia para comparar ahorro
         ref_system = EnergySystem(energy_system.price_history[0])
+        # Usar la misma semilla para comparación consistente
+        ref_seed = seed if seed is not None else None
         ref_result = simulate_demand_single_run(
             params, 'fixed', ref_system, 
-            seed, hour_start, day_type
+            ref_seed, hour_start, day_type
         )
         ref_peak = ref_result['peak_demand']
         ref_emissions = ref_result['total_emissions']
@@ -536,11 +538,15 @@ def simulate_demand(params, strategy, system=None):
         fixed_system = EnergySystem()
         
         # Usar misma semilla y parámetros para comparación justa
+        seed_to_use = 42  # Semilla por defecto
+        if hasattr(params, 'seed') and params.seed is not None:
+            seed_to_use = params.seed
+            
         fixed_result = simulate_demand_single_run(
             params, 
             "fixed",
             fixed_system, 
-            seed=params.seed if hasattr(params, 'seed') else 42,  # Usar semilla consistente
+            seed=seed_to_use,
             hour_start=params.hour_start,
             day_type=params.day_type
         )
@@ -550,14 +556,17 @@ def simulate_demand(params, strategy, system=None):
             "peak_demand": fixed_result["peak_demand"],
             "average_demand": fixed_result["average_demand"],
             "time_series": fixed_result["time_series"]
-            # Eliminado total_emissions
         }
     
     # Monte Carlo o simulación única
     if params.montecarlo_samples > 1:
         # Ejecutar múltiples simulaciones
         results = []
-        base_seed = params.seed if hasattr(params, 'seed') else int(time.time())
+        # Manejar correctamente la semilla
+        if hasattr(params, 'seed') and params.seed is not None:
+            base_seed = params.seed
+        else:
+            base_seed = int(time.time())
         
         for i in range(params.montecarlo_samples):
             energy_system = EnergySystem()
@@ -637,7 +646,9 @@ def simulate_demand(params, strategy, system=None):
             "cost_savings": float(cost_savings),
             "monte_carlo_samples": params.montecarlo_samples,
             "fixed_demand": fixed_demand,
-            "network_data": network_data
+            "network_data": network_data,
+            "strategy": strategy,  # AÑADIR ESTRATEGIA A LA RESPUESTA
+            "hours": params.hours
         }
         
         # Estado final del sistema energético
@@ -651,7 +662,10 @@ def simulate_demand(params, strategy, system=None):
     else:
         # Simulación única
         energy_system = EnergySystem() if system is None else system
-        single_seed = params.seed if hasattr(params, 'seed') else None
+        # Manejar correctamente la semilla para simulación única
+        single_seed = None
+        if hasattr(params, 'seed') and params.seed is not None:
+            single_seed = params.seed
         
         single_result = simulate_demand_single_run(
             params, strategy, energy_system,
@@ -678,7 +692,9 @@ def simulate_demand(params, strategy, system=None):
             "cost_savings": float(cost_savings),
             "monte_carlo_samples": 1,
             "fixed_demand": fixed_demand,
-            "network_data": network_data
+            "network_data": network_data,
+            "strategy": strategy,  # AÑADIR ESTRATEGIA A LA RESPUESTA
+            "hours": params.hours
         }
         
         # Estado final del sistema energético

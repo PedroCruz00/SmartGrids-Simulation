@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function SimulationForm({ onSubmit }) {
   const [formData, setFormData] = useState({
@@ -12,20 +12,40 @@ export default function SimulationForm({ onSubmit }) {
     day_type: "weekday",
   });
 
+  // Efecto para resetear Monte Carlo cuando se cambia a "fixed"
+  useEffect(() => {
+    if (formData.strategy === "fixed" && formData.monte_carlo_samples > 1) {
+      setFormData((prev) => ({
+        ...prev,
+        monte_carlo_samples: 1,
+      }));
+    }
+  }, [formData.strategy]);
+
   const handleChange = (e) => {
     const { name, value, type } = e.target;
+    const newValue = type === "number" ? parseInt(value, 10) : value;
+
     setFormData({
       ...formData,
-      [name]: type === "number" ? parseInt(value, 10) : value,
+      [name]: newValue,
     });
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(formData);
+
+    // Asegurar que Consumo Fijo siempre use 1 muestra
+    const submitData = {
+      ...formData,
+      monte_carlo_samples:
+        formData.strategy === "fixed" ? 1 : formData.monte_carlo_samples,
+    };
+
+    onSubmit(submitData);
   };
 
-  // Mostrar la sección de Monte Carlo solo si está seleccionado
+  // Mostrar la sección de Monte Carlo solo si NO está en modo fixed
   const showMonteCarloOptions = formData.strategy !== "fixed";
 
   return (
@@ -194,7 +214,8 @@ export default function SimulationForm({ onSubmit }) {
                     <option value="smart_grid">Red Inteligente</option>
                   </select>
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {formData.strategy === "fixed" && "Sin ajustes de consumo"}
+                    {formData.strategy === "fixed" &&
+                      "Sin ajustes de consumo (línea base)"}
                     {formData.strategy === "demand_response" &&
                       "Ajusta consumo según precios dinámicos"}
                     {formData.strategy === "smart_grid" &&
@@ -225,6 +246,17 @@ export default function SimulationForm({ onSubmit }) {
                     <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                       Más muestras = mayor precisión, pero mayor tiempo de
                       cálculo
+                    </p>
+                  </div>
+                )}
+
+                {/* Información sobre Consumo Fijo */}
+                {formData.strategy === "fixed" && (
+                  <div className="bg-gray-50 p-3 rounded-md dark:bg-gray-700">
+                    <p className="text-xs text-gray-600 dark:text-gray-400">
+                      <strong>Nota:</strong> El Consumo Fijo representa el
+                      escenario base sin optimizaciones. Se usa como referencia
+                      para comparar con otras estrategias.
                     </p>
                   </div>
                 )}
