@@ -270,20 +270,20 @@ def calculate_consumer_elasticity(consumer_type: str, price: float, state: str, 
     # La elasticidad varía según el tipo de consumidor
     # Los hogares son más elásticos durante picos, las industrias más inelásticas
     base_elasticity = {
-        'home': -0.5,       # Residencial: más elástico
-        'commercial': -0.3, # Comercial: elasticidad media
-        'industrial': -0.2  # Industrial: menos elástico (procesos fijos)
+        'home': -0.6,       # Residencial: más elástico
+        'commercial': -0.4, # Comercial: elasticidad media-alta
+        'industrial': -0.25  # Industrial: menos elástico (procesos fijos)
     }
     
     # La elasticidad también depende del estado de la red
     state_elasticity_multiplier = {
-        'very_low': 0.2,    # Baja demanda: poca razón para reducir
+        'very_low': 0.1,    # Baja demanda: casi no hay incentivo para reducir
         'low': 0.3,
         'medium_low': 0.5,
-        'medium': 0.7,
-        'medium_high': 0.9,
-        'high': 1.2,        # Alta demanda: mayor incentivo para reducir
-        'peak': 1.5         # Demanda pico: máximo incentivo
+        'medium': 0.8,
+        'medium_high': 1.1,
+        'high': 1.4,        # Alta demanda: mayor incentivo para reducir
+        'peak': 1.8         # Demanda pico: máximo incentivo
     }
     
     # Calcular elasticidad efectiva
@@ -295,8 +295,8 @@ def calculate_consumer_elasticity(consumer_type: str, price: float, state: str, 
     # Aplicar elasticidad para determinar el cambio en demanda
     demand_change_percent = effective_elasticity * price_change_percent
     
-    # Limitar el rango de cambio (no puede reducirse más del 30% ni aumentar más del 20%)
-    return max(-0.3, min(0.2, demand_change_percent))
+    # Limitar el rango de cambio (más amplio para permitir mejor diferenciación)
+    return max(-0.4, min(0.2, demand_change_percent))
 
 def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, hour_start=0, day_type='weekday'):
     """
@@ -323,10 +323,8 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
     emission_factors = []
     
     # Inicializar sistema energético si no se proporciona
-    if energy_system is None and strategy == 'smart_grid':
+    if energy_system is None:
         energy_system = EnergySystem()
-    elif energy_system is None:
-        energy_system = EnergySystem()  # Sistema mínimo para cálculos
     
     # Generar estados de Markov
     markov_states, state_multipliers = generate_markov_states(hours, hour_start, day_type)
@@ -347,22 +345,21 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
         
         # Aplicar estrategia de respuesta a la demanda
         if strategy == 'fixed':
-            # Sin modificación al consumo - dejar los valores base
-            home_actual = home_base.copy()  # Usar .copy() para evitar modificaciones inesperadas
+            # ESTRATEGIA FIJA: Sin modificación al consumo
+            home_actual = home_base.copy()
             commercial_actual = commercial_base.copy()
             industrial_actual = industrial_base.copy()
             current_price = base_price
             
         elif strategy == 'demand_response':
-            # Respuesta a la demanda basada en precios dinámicos
-            # El precio es más alto durante periodos de alta demanda
+            # ESTRATEGIA DE RESPUESTA A LA DEMANDA: Precios dinámicos básicos
             price_multiplier = {
                 'very_low': 0.7, 'low': 0.8, 'medium_low': 0.9, 
-                'medium': 1.0, 'medium_high': 1.1, 'high': 1.3, 'peak': 1.5
+                'medium': 1.0, 'medium_high': 1.2, 'high': 1.4, 'peak': 1.7
             }
             current_price = base_price * price_multiplier[state]
             
-            # Aplicar elasticidad para cada tipo de consumidor
+            # Aplicar elasticidad moderada
             home_elasticity = calculate_consumer_elasticity('home', current_price, state, base_price)
             commercial_elasticity = calculate_consumer_elasticity('commercial', current_price, state, base_price)
             industrial_elasticity = calculate_consumer_elasticity('industrial', current_price, state, base_price)
@@ -372,39 +369,70 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
             industrial_actual = industrial_base * (1 + industrial_elasticity)
             
         elif strategy == 'smart_grid':
-            # Respuesta avanzada con almacenamiento y gestión inteligente
+            # ESTRATEGIA DE RED INTELIGENTE: Gestión avanzada con múltiples tecnologías
             
-            # Precio base afectado por el sistema energético
-            current_price = energy_system.energy_price
+            # 1. Precio más estable debido a mejor gestión
+            smart_price_multiplier = {
+                'very_low': 0.85, 'low': 0.90, 'medium_low': 0.95, 
+                'medium': 1.0, 'medium_high': 1.05, 'high': 1.15, 'peak': 1.25
+            }
+            current_price = energy_system.energy_price * smart_price_multiplier[state]
             
-            # Las elasticidades dependen del precio y el estado
-            home_elasticity = calculate_consumer_elasticity('home', current_price, state, base_price)
-            commercial_elasticity = calculate_consumer_elasticity('commercial', current_price, state, base_price)
-            industrial_elasticity = calculate_consumer_elasticity('industrial', current_price, state, base_price)
+            # 2. Elasticidades mejoradas por mejor información y automatización
+            home_elasticity = calculate_consumer_elasticity('home', current_price, state, base_price) * 1.5
+            commercial_elasticity = calculate_consumer_elasticity('commercial', current_price, state, base_price) * 1.3
+            industrial_elasticity = calculate_consumer_elasticity('industrial', current_price, state, base_price) * 1.2
             
-            # Consumo ajustado por elasticidad
+            # Limitar elasticidades para evitar valores extremos
+            home_elasticity = max(-0.4, min(0.15, home_elasticity))
+            commercial_elasticity = max(-0.35, min(0.12, commercial_elasticity))
+            industrial_elasticity = max(-0.25, min(0.1, industrial_elasticity))
+            
+            # Consumo base ajustado por elasticidad mejorada
             home_adjusted = home_base * (1 + home_elasticity)
             commercial_adjusted = commercial_base * (1 + commercial_elasticity)
             industrial_adjusted = industrial_base * (1 + industrial_elasticity)
             
-            # Capacidad de almacenamiento disponible (puede reducir más el pico)
+            # 3. Gestión inteligente de almacenamiento y generación distribuida
             if state in ['high', 'peak']:
-                # Usar almacenamiento para reducir el pico
-                storage_factor = 1.0 - (energy_system.storage_capacity * 0.8)
-                home_actual = home_adjusted * storage_factor
-                commercial_actual = commercial_adjusted * storage_factor
-                industrial_actual = industrial_adjusted * storage_factor
+                # PICOS: Usar almacenamiento + generación solar + gestión activa
+                storage_reduction = energy_system.storage_capacity * 0.6  # Más eficiente
+                solar_contribution = energy_system.renewable_adoption * 0.3  # Generación local
+                smart_management = 0.15  # Gestión predictiva adicional
+                
+                total_reduction = min(0.45, storage_reduction + solar_contribution + smart_management)
+                reduction_factor = 1.0 - total_reduction
+                
+                home_actual = home_adjusted * reduction_factor
+                commercial_actual = commercial_adjusted * reduction_factor
+                industrial_actual = industrial_adjusted * reduction_factor
+                
             elif state in ['very_low', 'low']:
-                # Cargar el almacenamiento durante baja demanda (aumenta ligeramente)
-                storage_factor = 1.0 + (energy_system.storage_capacity * 0.3)
-                home_actual = home_adjusted * storage_factor
-                commercial_actual = commercial_adjusted * storage_factor
-                industrial_actual = industrial_adjusted * storage_factor
+                # VALLES: Cargar almacenamiento + pre-cooling/heating + producción flexible
+                storage_charging = energy_system.storage_capacity * 0.4
+                demand_shifting = 0.25  # Cargas que se pueden diferir
+                
+                total_increase = storage_charging + demand_shifting
+                increase_factor = 1.0 + total_increase
+                
+                home_actual = home_adjusted * increase_factor
+                commercial_actual = commercial_adjusted * increase_factor
+                industrial_actual = industrial_adjusted * increase_factor
+                
+            elif state in ['medium_high']:
+                # TRANSICIÓN: Gestión predictiva suave
+                prediction_optimization = 0.1
+                home_actual = home_adjusted * (1.0 - prediction_optimization)
+                commercial_actual = commercial_adjusted * (1.0 - prediction_optimization)
+                industrial_actual = industrial_adjusted * (1.0 - prediction_optimization)
+                
             else:
-                # Demanda normal
-                home_actual = home_adjusted
-                commercial_actual = commercial_adjusted
-                industrial_actual = industrial_adjusted
+                # DEMANDA NORMAL: Optimización de rutina
+                routine_optimization = 0.05
+                home_actual = home_adjusted * (1.0 - routine_optimization)
+                commercial_actual = commercial_adjusted * (1.0 - routine_optimization)
+                industrial_actual = industrial_adjusted * (1.0 - routine_optimization)
+                
         else:
             # Estrategia no reconocida, usar valores base
             home_actual = home_base
@@ -418,9 +446,18 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
         # Actualizar max_demand si es necesario
         max_demand = max(max_demand, total_demand)
         
-        # Actualizar sistema energético
+        # Actualizar sistema energético (para todas las estrategias, pero con diferentes parámetros)
         if strategy == 'smart_grid':
-            energy_system.update(total_demand, max_demand)
+            # Red inteligente evoluciona más rápido
+            energy_system.learning_rate = 0.015  # 50% más rápido
+            energy_system.storage_growth_rate = 0.012  # 50% más rápido
+        elif strategy == 'demand_response':
+            # Respuesta a la demanda evoluciona moderadamente
+            energy_system.learning_rate = 0.012
+            energy_system.storage_growth_rate = 0.010
+        # 'fixed' mantiene valores por defecto
+        
+        energy_system.update(total_demand, max_demand)
         
         # Registrar resultados
         demand_profile.append(total_demand)
@@ -434,11 +471,12 @@ def simulate_demand_single_run(params, strategy, energy_system=None, seed=None, 
     # Calcular emisiones y ahorro
     total_emissions = sum(demand_profile[i] * emission_factors[i] for i in range(hours))
     
-    # Para respuesta a la demanda, crear una simulación de referencia
+    # Para respuesta a la demanda y smart grid, crear una simulación de referencia
     if strategy in ['demand_response', 'smart_grid']:
         # Crear sistema de referencia para comparar ahorro
+        ref_system = EnergySystem(energy_system.price_history[0])
         ref_result = simulate_demand_single_run(
-            params, 'fixed', EnergySystem(energy_system.price_history[0]), 
+            params, 'fixed', ref_system, 
             seed, hour_start, day_type
         )
         ref_peak = ref_result['peak_demand']

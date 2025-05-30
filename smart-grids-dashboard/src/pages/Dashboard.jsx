@@ -1,4 +1,3 @@
-//C:\SmartGrids-Simulation\smart-grids-dashboard\src\pages\Dashboard.jsx
 import { useState } from "react";
 import SimulationForm from "../components/SimulationForm";
 import MetricsPanel from "../components/MetricsPanel";

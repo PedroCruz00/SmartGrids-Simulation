@@ -312,28 +312,6 @@ export default function MetricsPanel({ data }) {
           </div>
         </div>
       )}
-
-      {/* Resumen de estrategia */}
-      <div className="mt-6 bg-gray-100 p-4 rounded-lg dark:bg-gray-700">
-        <h3 className="text-sm font-medium text-gray-800 dark:text-gray-200 mb-2">
-          Estrategia Actual:{" "}
-          {strategy === "fixed"
-            ? "Consumo Fijo"
-            : strategy === "demand_response"
-            ? "Respuesta a la Demanda"
-            : strategy === "smart_grid"
-            ? "Red Inteligente"
-            : strategy}
-        </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          {strategy === "fixed" &&
-            "Sin optimización de consumo. La demanda se mantiene constante independientemente de las condiciones de la red."}
-          {strategy === "demand_response" &&
-            "Los consumidores ajustan su demanda en respuesta a señales de precio dinámicas, reduciendo el consumo durante picos de alta demanda."}
-          {strategy === "smart_grid" &&
-            "Sistema avanzado que incluye almacenamiento de energía, generación renovable y gestión inteligente de la demanda para optimizar la eficiencia del sistema."}
-        </p>
-      </div>
     </div>
   );
 }
