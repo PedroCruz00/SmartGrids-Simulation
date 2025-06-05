@@ -11,7 +11,7 @@ export default function NodeNetwork({ data }) {
   const tooltipRef = useRef(null);
   const containerRef = useRef(null);
 
-  // Paleta de colores mejorada con mayor accesibilidad
+  // Paleta de colores con mayor accesibilidad
   const colorScheme = {
     grid: "#1a56db", // Azul más vibrante
     home: "#047857", // Verde más rico pero accesible
@@ -37,6 +37,17 @@ export default function NodeNetwork({ data }) {
     sectorSpread: 0.8, // Extensión del sector
     minLinkWidth: 1, // Grosor mínimo para enlaces
     maxLinkWidth: 5, // Grosor máximo para enlaces
+  };
+
+  // Función helper para deseleccionar nodo de manera segura
+  const safelyDeselectNode = () => {
+    setSelectedNode(null);
+
+    // Limpiar cualquier tooltip persistente
+    if (containerRef.current) {
+      // Remover todos los tooltips existentes
+      d3.select(containerRef.current).selectAll(".network-tooltip").remove();
+    }
   };
 
   // Actualizar el tamaño del SVG cuando cambie el contenedor
@@ -65,6 +76,15 @@ export default function NodeNetwork({ data }) {
     updateSvgSize();
     window.addEventListener("resize", updateSvgSize);
     return () => window.removeEventListener("resize", updateSvgSize);
+  }, []);
+
+  // Limpiar tooltips cuando se desmonta el componente
+  useEffect(() => {
+    return () => {
+      if (containerRef.current) {
+        d3.select(containerRef.current).selectAll(".network-tooltip").remove();
+      }
+    };
   }, []);
 
   // Calcular estadísticas de energía
@@ -106,20 +126,23 @@ export default function NodeNetwork({ data }) {
 
     // Agrupar por tipo y calcular estadísticas
     nodeData.forEach((node) => {
-      if (node.type === "grid") return;
+      if (!node || node.type === "grid") return;
 
       // Verificar que el tipo es válido y tiene una categoría correspondiente
       const category = typeToCategory[node.type];
       if (!category || !stats[category]) return;
 
+      const consumption =
+        typeof node.consumption === "number" ? node.consumption : 0;
+
       stats[category].count++;
-      stats[category].totalConsumption += node.consumption || 0;
+      stats[category].totalConsumption += consumption;
       stats[category].maxConsumption = Math.max(
         stats[category].maxConsumption,
-        node.consumption || 0
+        consumption
       );
       stats.total.count++;
-      stats.total.totalConsumption += node.consumption || 0;
+      stats.total.totalConsumption += consumption;
     });
 
     // Calcular promedios (con protección contra división por cero)
@@ -164,36 +187,46 @@ export default function NodeNetwork({ data }) {
         type: "grid",
         size: config.baseNodeSize * 3.5,
         description: "Centro de distribución de energía",
+        consumption: 0, // El grid no consume, distribuye
       },
-      // Procesar hogares
+      // Procesar hogares con validación
       ...validData.homes.map((home, i) => ({
         id: `home-${i}`,
         name: `Hogar ${i + 1}`,
         type: "home",
-        consumption: home.consumption || 0,
-        size: config.baseNodeSize + Math.sqrt(home.consumption || 1) * 0.8,
+        consumption:
+          typeof home.consumption === "number" ? home.consumption : 0,
+        size:
+          config.baseNodeSize +
+          Math.sqrt(Math.max(home.consumption || 1, 1)) * 0.8,
         description: `Vivienda residencial con consumo de ${(
           home.consumption || 0
         ).toFixed(1)} kW`,
       })),
-      // Procesar comercios
+      // Procesar comercios con validación
       ...validData.businesses.map((business, i) => ({
         id: `business-${i}`,
         name: `Comercio ${i + 1}`,
         type: "business",
-        consumption: business.consumption || 0,
-        size: config.baseNodeSize + Math.sqrt(business.consumption || 1) * 0.7,
+        consumption:
+          typeof business.consumption === "number" ? business.consumption : 0,
+        size:
+          config.baseNodeSize +
+          Math.sqrt(Math.max(business.consumption || 1, 1)) * 0.7,
         description: `Establecimiento comercial con consumo de ${(
           business.consumption || 0
         ).toFixed(1)} kW`,
       })),
-      // Procesar industrias
+      // Procesar industrias con validación
       ...validData.industries.map((industry, i) => ({
         id: `industry-${i}`,
         name: `Industria ${i + 1}`,
         type: "industry",
-        consumption: industry.consumption || 0,
-        size: config.baseNodeSize + Math.sqrt(industry.consumption || 1) * 0.6,
+        consumption:
+          typeof industry.consumption === "number" ? industry.consumption : 0,
+        size:
+          config.baseNodeSize +
+          Math.sqrt(Math.max(industry.consumption || 1, 1)) * 0.6,
         description: `Planta industrial con consumo de ${(
           industry.consumption || 0
         ).toFixed(1)} kW`,
@@ -202,7 +235,7 @@ export default function NodeNetwork({ data }) {
 
     // Crear enlaces con grosor proporcionado al consumo de manera más equilibrada
     const networkLinks = networkNodes
-      .filter((node) => node.id !== "grid")
+      .filter((node) => node && node.id && node.id !== "grid")
       .map((node) => {
         // Escalar el ancho del enlace de forma más proporcional al consumo
         const minConsumption = 1;
@@ -242,32 +275,34 @@ export default function NodeNetwork({ data }) {
 
   // Función para determinar la forma según el tipo de nodo
   const getNodeSymbol = (d) => {
+    if (!d || !d.type) return d3.symbol().type(d3.symbolCircle).size(100)();
+
     switch (d.type) {
       case "grid":
         return d3
           .symbol()
           .type(d3.symbolStar)
-          .size(d.size * 40)();
+          .size((d.size || config.baseNodeSize) * 40)();
       case "home":
         return d3
           .symbol()
           .type(d3.symbolCircle)
-          .size(d.size * 25)();
+          .size((d.size || config.baseNodeSize) * 25)();
       case "business":
         return d3
           .symbol()
           .type(d3.symbolSquare)
-          .size(d.size * 30)();
+          .size((d.size || config.baseNodeSize) * 30)();
       case "industry":
         return d3
           .symbol()
           .type(d3.symbolTriangle)
-          .size(d.size * 35)();
+          .size((d.size || config.baseNodeSize) * 35)();
       default:
         return d3
           .symbol()
           .type(d3.symbolCircle)
-          .size(d.size * 25)();
+          .size((d.size || config.baseNodeSize) * 25)();
     }
   };
 
@@ -278,21 +313,24 @@ export default function NodeNetwork({ data }) {
 
     // Agrupar nodos por tipo
     const nodesByType = {
-      grid: nodes.filter((n) => n.type === "grid"),
-      home: nodes.filter((n) => n.type === "home"),
-      business: nodes.filter((n) => n.type === "business"),
-      industry: nodes.filter((n) => n.type === "industry"),
+      grid: nodes.filter((n) => n && n.type === "grid"),
+      home: nodes.filter((n) => n && n.type === "home"),
+      business: nodes.filter((n) => n && n.type === "business"),
+      industry: nodes.filter((n) => n && n.type === "industry"),
     };
 
     // Posicionar el nodo de red en el centro
     nodesByType.grid.forEach((node) => {
-      node.fx = centerX;
-      node.fy = centerY;
+      if (node) {
+        node.fx = centerX;
+        node.fy = centerY;
+      }
     });
 
     // Posicionar cada tipo en su propio anillo
     const positionNodesInRing = (nodes, radius, startAngle, endAngle) => {
       nodes.forEach((node, i) => {
+        if (!node) return;
         // Distribuir uniformemente en el círculo
         const angle = startAngle + (i / nodes.length) * (endAngle - startAngle);
         // Añadir algo de variación al radio para evitar alineación perfecta
@@ -319,16 +357,18 @@ export default function NodeNetwork({ data }) {
 
     // Agrupar nodos por tipo
     const nodesByType = {
-      grid: nodes.filter((n) => n.type === "grid"),
-      home: nodes.filter((n) => n.type === "home"),
-      business: nodes.filter((n) => n.type === "business"),
-      industry: nodes.filter((n) => n.type === "industry"),
+      grid: nodes.filter((n) => n && n.type === "grid"),
+      home: nodes.filter((n) => n && n.type === "home"),
+      business: nodes.filter((n) => n && n.type === "business"),
+      industry: nodes.filter((n) => n && n.type === "industry"),
     };
 
     // Posicionar el nodo de red en el centro
     nodesByType.grid.forEach((node) => {
-      node.fx = centerX;
-      node.fy = centerY;
+      if (node) {
+        node.fx = centerX;
+        node.fy = centerY;
+      }
     });
 
     // Asignar sectores específicos para cada tipo
@@ -358,6 +398,7 @@ export default function NodeNetwork({ data }) {
       const typeNodes = nodesByType[type];
 
       typeNodes.forEach((node, i) => {
+        if (!node) return;
         // Distribuir uniformemente en el sector
         const angle =
           sector.startAngle +
@@ -381,8 +422,9 @@ export default function NodeNetwork({ data }) {
   useEffect(() => {
     if (!nodes.length || !links.length || !containerRef.current) return;
 
-    // Limpiar cualquier SVG anterior
+    // Limpiar cualquier SVG anterior Y tooltips persistentes
     d3.select(containerRef.current).select("svg").remove();
+    d3.select(containerRef.current).selectAll(".network-tooltip").remove();
 
     // Obtener dimensiones del contenedor
     const width = containerRef.current.clientWidth;
@@ -401,7 +443,7 @@ export default function NodeNetwork({ data }) {
     // Agregar un fondo de cuadrícula sutil con mejor diseño
     const defs = svg.append("defs");
 
-    // Patrón de cuadrícula mejorado
+    // Patrón de cuadrícula
     const gridPattern = defs
       .append("pattern")
       .attr("id", "grid")
@@ -440,34 +482,36 @@ export default function NodeNetwork({ data }) {
       applySectorLayout(processedNodes, width, height);
     }
 
-    // Crear simulación de fuerzas mejorada
+    // Crear simulación de fuerzas
     const simulation = d3
       .forceSimulation(processedNodes)
       .force(
         "link",
         d3
           .forceLink(links)
-          .id((d) => d.id)
+          .id((d) => (d && d.id ? d.id : null))
           .distance((d) => {
+            if (!d || !d.target) return 100;
             // Distancia basada en el tipo y consumo
             let baseDist = 100;
             if (d.target.type === "home") baseDist = 150;
             if (d.target.type === "business") baseDist = 200;
             if (d.target.type === "industry") baseDist = 250;
-            return baseDist + Math.sqrt(d.value) * 3;
+            return baseDist + Math.sqrt(d.value || 1) * 3;
           })
           .strength(config.linkStrength)
       )
       .force(
         "charge",
-        d3
-          .forceManyBody()
-          .strength((d) =>
-            d.type === "grid"
-              ? config.chargeStrength * 3
-              : config.chargeStrength *
-                (1 + (d.size / config.baseNodeSize) * 0.1)
-          )
+        d3.forceManyBody().strength((d) => {
+          if (!d) return config.chargeStrength;
+          return d.type === "grid"
+            ? config.chargeStrength * 3
+            : config.chargeStrength *
+                (1 +
+                  ((d.size || config.baseNodeSize) / config.baseNodeSize) *
+                    0.1);
+        })
       )
       .force(
         "center",
@@ -475,7 +519,13 @@ export default function NodeNetwork({ data }) {
       )
       .force(
         "collision",
-        d3.forceCollide().radius((d) => d.size * config.collisionRadius)
+        d3
+          .forceCollide()
+          .radius(
+            (d) =>
+              (d && d.size ? d.size : config.baseNodeSize) *
+              config.collisionRadius
+          )
       );
 
     // Ajustes según el layout seleccionado
@@ -582,15 +632,14 @@ export default function NodeNetwork({ data }) {
       .data(links)
       .enter()
       .append("line")
-      .attr(
-        "stroke",
-        (d) =>
-          `url(#linkGradient${
-            d.type.charAt(0).toUpperCase() + d.type.slice(1)
-          })`
-      )
+      .attr("stroke", (d) => {
+        if (!d || !d.type) return "#999";
+        return `url(#linkGradient${
+          d.type.charAt(0).toUpperCase() + d.type.slice(1)
+        })`;
+      })
       .attr("stroke-opacity", 0.7)
-      .attr("stroke-width", (d) => d.width)
+      .attr("stroke-width", (d) => (d && d.width ? d.width : 1))
       .attr("stroke-linecap", "round");
 
     // Crear contenedor para nodos
@@ -603,7 +652,9 @@ export default function NodeNetwork({ data }) {
       .enter()
       .append("path")
       .attr("d", (d) => getNodeSymbol(d))
-      .attr("fill", (d) => colorScheme[d.type])
+      .attr("fill", (d) =>
+        d && d.type ? colorScheme[d.type] || "#999" : "#999"
+      )
       .attr("stroke", "#fff")
       .attr("stroke-width", 1.5)
       .attr("filter", "url(#shadow)")
@@ -617,15 +668,16 @@ export default function NodeNetwork({ data }) {
           .on("end", dragended)
       );
 
-    // Etiquetas mejoradas
+    // Etiquetas
     const labelGroup = svg.append("g").attr("class", "labels");
 
     // Criterio para mostrar etiquetas: nodos grandes o importantes
     const shouldShowLabel = (d) => {
+      if (!d) return false;
       if (d.type === "grid") return true; // Siempre mostrar etiqueta para el nodo central
       if (d.type === "industry") return true; // Mostrar etiquetas para todas las industrias
-      if (d.type === "business" && d.consumption > 15) return true; // Negocios grandes
-      if (d.type === "home" && d.consumption > 10) return true; // Hogares grandes
+      if (d.type === "business" && (d.consumption || 0) > 15) return true; // Negocios grandes
+      if (d.type === "home" && (d.consumption || 0) > 10) return true; // Hogares grandes
       return false;
     };
 
@@ -634,9 +686,9 @@ export default function NodeNetwork({ data }) {
       .data(processedNodes.filter(shouldShowLabel))
       .enter()
       .append("text")
-      .text((d) => d.name)
-      .attr("font-size", (d) => (d.type === "grid" ? "12px" : "10px"))
-      .attr("font-weight", (d) => (d.type === "grid" ? "bold" : "normal"))
+      .text((d) => (d && d.name ? d.name : "Sin nombre"))
+      .attr("font-size", (d) => (d && d.type === "grid" ? "12px" : "10px"))
+      .attr("font-weight", (d) => (d && d.type === "grid" ? "bold" : "normal"))
       .attr("fill", colorScheme.text)
       .attr("dx", 12)
       .attr("dy", 4)
@@ -646,27 +698,33 @@ export default function NodeNetwork({ data }) {
         "0 1px 0 #fff, 1px 0 0 #fff, 0 -1px 0 #fff, -1px 0 0 #fff"
       );
 
-    // Crear tooltip mejorado con más información
+    // Crear tooltip ÚNICO con clase específica
     const tooltip = d3
       .select(containerRef.current)
       .append("div")
       .attr(
         "class",
-        "absolute hidden bg-white p-3 rounded-lg shadow-lg text-sm z-10 dark:bg-gray-800 dark:text-white"
+        "network-tooltip absolute hidden bg-white p-3 rounded-lg shadow-lg text-sm z-10 dark:bg-gray-800 dark:text-white"
       )
       .style("pointer-events", "none")
-      .style("max-width", "220px")
-      .attr("ref", tooltipRef);
+      .style("max-width", "220px");
 
-    // Mejorar eventos de interacción para nodos
+    // Mejorar eventos de interacción para nodos con validación
     node
       .on("mouseover", function (event, d) {
-        // Mostrar tooltip con diseño mejorado y más información
+        if (!d) return;
+
+        // Limpiar cualquier tooltip anterior antes de mostrar uno nuevo
+        d3.select(containerRef.current)
+          .selectAll(".network-tooltip")
+          .classed("hidden", true);
+
+        // Mostrar tooltip con diseño y más información
         tooltip
           .html(
             `
             <div class="font-bold text-base mb-1 text-gray-900 dark:text-white">${
-              d.name
+              d.name || "Sin nombre"
             }</div>
             <div class="text-gray-600 dark:text-gray-300 mb-2">${
               d.description || ""
@@ -675,9 +733,9 @@ export default function NodeNetwork({ data }) {
               d.type !== "grid"
                 ? `<div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">Consumo:</span>
-                <span class="font-medium">${
-                  d.consumption?.toFixed(1) || 0
-                } kW</span>
+                <span class="font-medium">${(d.consumption || 0).toFixed(
+                  1
+                )} kW</span>
               </div>
               <div class="flex justify-between">
                 <span class="text-gray-500 dark:text-gray-400">Tipo:</span>
@@ -707,28 +765,37 @@ export default function NodeNetwork({ data }) {
           .attr("stroke", "#f8fafc")
           .attr("stroke-width", 2.5);
 
-        // Resaltar enlaces conectados
+        // Resaltar enlaces conectados con validación
         link
-          .filter((l) => l.source.id === d.id || l.target.id === d.id)
+          .filter((l) => {
+            if (!l || !l.source || !l.target || !d) return false;
+            const sourceId =
+              typeof l.source === "object" ? l.source.id : l.source;
+            const targetId =
+              typeof l.target === "object" ? l.target.id : l.target;
+            return sourceId === d.id || targetId === d.id;
+          })
           .transition()
           .duration(200)
           .attr("stroke-opacity", 1)
-          .attr("stroke-width", (l) => l.width * 2)
-          .attr("stroke", colorScheme[d.type]);
+          .attr("stroke-width", (l) => (l.width || 1) * 2)
+          .attr("stroke", d.type ? colorScheme[d.type] || "#999" : "#999");
 
         // Atenuar otros nodos
         node
-          .filter((n) => n.id !== d.id && n.id !== "grid")
+          .filter((n) => n && n.id && d && n.id !== d.id && n.id !== "grid")
           .transition()
           .duration(200)
           .attr("opacity", 0.5);
       })
       .on("mouseout", function (event, d) {
-        // Ocultar tooltip
+        if (!d) return;
+
+        // Ocultar tooltip inmediatamente
         tooltip.classed("hidden", true);
 
         // Restaurar nodo (si no está seleccionado)
-        if (!selectedNode || selectedNode.id !== d.id) {
+        if (!selectedNode || !selectedNode.id || selectedNode.id !== d.id) {
           d3.select(this)
             .transition()
             .duration(200)
@@ -742,8 +809,9 @@ export default function NodeNetwork({ data }) {
           .transition()
           .duration(200)
           .attr("stroke-opacity", 0.7)
-          .attr("stroke-width", (d) => d.width)
+          .attr("stroke-width", (d) => (d && d.width ? d.width : 1))
           .attr("stroke", (l) => {
+            if (!l || !l.type) return "#999";
             // Determinar el gradiente a utilizar para el enlace de forma segura
             const typeKey =
               l.type === "home"
@@ -753,9 +821,7 @@ export default function NodeNetwork({ data }) {
                 : l.type === "industry"
                 ? "Industry"
                 : "";
-            return typeKey
-              ? `url(#linkGradient${typeKey})`
-              : `url(#linkGradient)`;
+            return typeKey ? `url(#linkGradient${typeKey})` : "#999";
           });
 
         // Restaurar opacidad de otros nodos
@@ -764,8 +830,15 @@ export default function NodeNetwork({ data }) {
       .on("click", function (event, d) {
         event.stopPropagation();
 
+        if (!d || !d.id) return;
+
+        // Limpiar cualquier tooltip antes de mostrar el panel
+        d3.select(containerRef.current)
+          .selectAll(".network-tooltip")
+          .classed("hidden", true);
+
         // Si ya estaba seleccionado, deseleccionar
-        if (selectedNode && selectedNode.id === d.id) {
+        if (selectedNode && selectedNode.id && selectedNode.id === d.id) {
           setSelectedNode(null);
           d3.select(this)
             .transition()
@@ -777,9 +850,9 @@ export default function NodeNetwork({ data }) {
         // Si no, seleccionar este nuevo nodo
         else {
           // Deseleccionar el anterior si existe
-          if (selectedNode) {
+          if (selectedNode && selectedNode.id) {
             node
-              .filter((n) => n.id === selectedNode.id)
+              .filter((n) => n && n.id && n.id === selectedNode.id)
               .transition()
               .duration(config.animationDuration)
               .attr("stroke", "#fff")
@@ -796,69 +869,58 @@ export default function NodeNetwork({ data }) {
             .attr("stroke-width", 3)
             .attr("filter", "url(#glow)");
 
-          // Mostrar enlaces relacionados
+          // Mostrar enlaces relacionados con validación
           link
-            .filter((l) => l.source.id === d.id || l.target.id === d.id)
+            .filter((l) => {
+              if (!l || !l.source || !l.target || !d) return false;
+              const sourceId =
+                typeof l.source === "object" ? l.source.id : l.source;
+              const targetId =
+                typeof l.target === "object" ? l.target.id : l.target;
+              return sourceId === d.id || targetId === d.id;
+            })
             .transition()
             .duration(config.animationDuration)
-            .attr("stroke", colorScheme[d.type])
+            .attr("stroke", d.type ? colorScheme[d.type] || "#999" : "#999")
             .attr("stroke-opacity", 1)
-            .attr("stroke-width", (l) => l.width * 1.5);
+            .attr("stroke-width", (l) => (l.width || 1) * 1.5);
         }
       });
 
     // Permitir deseleccionar haciendo clic en el fondo
     svg.on("click", () => {
-      if (selectedNode) {
-        node
-          .filter((n) => n.id === selectedNode.id)
-          .transition()
-          .duration(config.animationDuration)
-          .attr("stroke", "#fff")
-          .attr("stroke-width", 1.5)
-          .attr("filter", "url(#shadow)");
-
-        link
-          .transition()
-          .duration(config.animationDuration)
-          .attr(
-            "stroke",
-            (l) =>
-              `url(#linkGradient${
-                l.type.charAt(0).toUpperCase() + l.type.slice(1)
-              })`
-          )
-          .attr("stroke-opacity", 0.7)
-          .attr("stroke-width", (d) => d.width);
-
-        setSelectedNode(null);
-      }
+      safelyDeselectNode();
     });
 
     // Función de actualización más suave para el ticking
     simulation.on("tick", () => {
       // Actualizar posición de enlaces con curvas suaves
       link
-        .attr("x1", (d) => d.source.x)
-        .attr("y1", (d) => d.source.y)
-        .attr("x2", (d) => d.target.x)
-        .attr("y2", (d) => d.target.y);
+        .attr("x1", (d) => (d && d.source ? d.source.x || 0 : 0))
+        .attr("y1", (d) => (d && d.source ? d.source.y || 0 : 0))
+        .attr("x2", (d) => (d && d.target ? d.target.x || 0 : 0))
+        .attr("y2", (d) => (d && d.target ? d.target.y || 0 : 0));
 
       // Actualizar posición de nodos con límites
       node.attr("transform", (d) => {
+        if (!d) return "translate(0, 0)";
         // Limitar posición al área visible con margen
-        d.x = Math.max(d.size, Math.min(width - d.size, d.x));
-        d.y = Math.max(d.size, Math.min(height - d.size, d.y));
+        const size = d.size || config.baseNodeSize;
+        d.x = Math.max(size, Math.min(width - size, d.x || 0));
+        d.y = Math.max(size, Math.min(height - size, d.y || 0));
 
         return `translate(${d.x}, ${d.y})`;
       });
 
       // Actualizar posición de etiquetas con ajuste para evitar solapamiento
-      labels.attr("x", (d) => d.x).attr("y", (d) => d.y);
+      labels
+        .attr("x", (d) => (d ? d.x || 0 : 0))
+        .attr("y", (d) => (d ? d.y || 0 : 0));
     });
 
-    // Funciones para el arrastre de nodos mejoradas
+    // Funciones para el arrastre de nodos
     function dragstarted(event, d) {
+      if (!d) return;
       if (!event.active) simulation.alphaTarget(0.3).restart();
       d.fx = d.x;
       d.fy = d.y;
@@ -872,15 +934,17 @@ export default function NodeNetwork({ data }) {
     }
 
     function dragged(event, d) {
+      if (!d) return;
       d.fx = event.x;
       d.fy = event.y;
     }
 
     function dragended(event, d) {
+      if (!d) return;
       if (!event.active) simulation.alphaTarget(0);
 
       // Restaurar apariencia normal si no está seleccionado
-      if (!selectedNode || selectedNode.id !== d.id) {
+      if (!selectedNode || !selectedNode.id || selectedNode.id !== d.id) {
         d3.select(event.sourceEvent.target)
           .transition()
           .duration(200)
@@ -900,254 +964,7 @@ export default function NodeNetwork({ data }) {
       }
     }
 
-    // Leyenda mejorada con codificación de tamaño
-    const legendData = [
-      {
-        type: "grid",
-        label: "Red Eléctrica",
-        description: "Fuente de distribución",
-      },
-      {
-        type: "home",
-        label: "Hogares",
-        description: energyStats
-          ? `${
-              energyStats.homes.count
-            } unidades, ${energyStats.homes.totalConsumption.toFixed(
-              1
-            )} kW total`
-          : "Consumo residencial",
-      },
-      {
-        type: "business",
-        label: "Comercios",
-        description: energyStats
-          ? `${
-              energyStats.businesses.count
-            } unidades, ${energyStats.businesses.totalConsumption.toFixed(
-              1
-            )} kW total`
-          : "Establecimientos comerciales",
-      },
-      {
-        type: "industry",
-        label: "Industrias",
-        description: energyStats
-          ? `${
-              energyStats.industries.count
-            } unidades, ${energyStats.industries.totalConsumption.toFixed(
-              1
-            )} kW total`
-          : "Plantas industriales",
-      },
-    ];
-
-    // Crear una leyenda con explicación de tamaño
-    const legendWidth = 220;
-    const legend = svg
-      .append("g")
-      .attr("transform", "translate(20, 20)")
-      .attr("class", "legend");
-
-    // Fondo con bordes suaves para la leyenda
-    legend
-      .append("rect")
-      .attr("width", legendWidth)
-      .attr("height", legendData.length * 25 + 70) // Espacio extra para la leyenda de tamaño
-      .attr("fill", "white")
-      .attr("fill-opacity", 0.9)
-      .attr("rx", 8)
-      .attr("ry", 8)
-      .attr("stroke", "#e2e8f0")
-      .attr("stroke-width", 1);
-
-    // Título de la leyenda
-    legend
-      .append("text")
-      .attr("x", 10)
-      .attr("y", 20)
-      .attr("font-size", "12px")
-      .attr("font-weight", "bold")
-      .attr("fill", "#1f2937")
-      .text("Leyenda");
-
-    // Agregar elementos de la leyenda
-    legendData.forEach((item, i) => {
-      const legendItem = legend
-        .append("g")
-        .attr("transform", `translate(10, ${i * 25 + 35})`)
-        .attr("cursor", "pointer");
-
-      // Icono
-      legendItem
-        .append("path")
-        .attr("d", getNodeSymbol({ ...item, size: 8 }))
-        .attr("fill", colorScheme[item.type])
-        .attr("stroke", "#fff")
-        .attr("stroke-width", 1)
-        .attr("transform", "scale(0.6)");
-
-      // Texto principal
-      legendItem
-        .append("text")
-        .text(item.label)
-        .attr("x", 20)
-        .attr("y", 4)
-        .attr("font-size", "12px")
-        .attr("font-weight", "500")
-        .attr("fill", "#374151");
-
-      // Descripción
-      legendItem
-        .append("text")
-        .text(item.description)
-        .attr("x", 20)
-        .attr("y", 18)
-        .attr("font-size", "9px")
-        .attr("fill", "#6b7280");
-
-      // Interactividad de la leyenda
-      legendItem
-        .on("mouseover", function () {
-          // Resaltar nodos de este tipo
-          node
-            .filter((d) => d.type === item.type)
-            .transition()
-            .duration(200)
-            .attr("stroke", "#f8fafc")
-            .attr("stroke-width", 2);
-
-          // Atenuar otros tipos
-          node
-            .filter((d) => d.type !== item.type)
-            .transition()
-            .duration(200)
-            .attr("opacity", 0.3);
-
-          // Resaltar enlaces relacionados
-          link
-            .transition()
-            .duration(200)
-            .attr("opacity", (l) => {
-              const sourceType = nodes.find(
-                (n) =>
-                  n.id ===
-                  (typeof l.source === "object" ? l.source.id : l.source)
-              )?.type;
-              const targetType = nodes.find(
-                (n) =>
-                  n.id ===
-                  (typeof l.target === "object" ? l.target.id : l.target)
-              )?.type;
-              return sourceType === item.type || targetType === item.type
-                ? 1
-                : 0.1;
-            });
-
-          // Resaltar texto de leyenda
-          d3.select(this)
-            .select("text")
-            .transition()
-            .duration(200)
-            .attr("font-weight", "bold");
-        })
-        .on("mouseout", function () {
-          // Restaurar todos los nodos y enlaces
-          node
-            .transition()
-            .duration(200)
-            .attr("opacity", 1)
-            .attr("stroke", (d) =>
-              selectedNode && selectedNode.id === d.id
-                ? colorScheme.selected
-                : "#fff"
-            )
-            .attr("stroke-width", (d) =>
-              selectedNode && selectedNode.id === d.id ? 3 : 1.5
-            );
-
-          link.transition().duration(200).attr("opacity", 1);
-
-          // Restaurar texto de leyenda
-          d3.select(this)
-            .select("text")
-            .transition()
-            .duration(200)
-            .attr("font-weight", "500");
-        })
-        .on("click", function () {
-          // Centrar la visualización en los nodos de este tipo
-          const typeNodes = nodes.filter((n) => n.type === item.type);
-          if (typeNodes.length === 0) return;
-
-          // Actualizar la simulación para centrar estos nodos
-          simulation
-            .force(
-              "x",
-              d3
-                .forceX((d) =>
-                  d.type === item.type
-                    ? width / 2
-                    : width / 2 + (Math.random() - 0.5) * 100
-                )
-                .strength((d) => (d.type === item.type ? 0.2 : 0.05))
-            )
-            .force(
-              "y",
-              d3
-                .forceY((d) =>
-                  d.type === item.type
-                    ? height / 2
-                    : height / 2 + (Math.random() - 0.5) * 100
-                )
-                .strength((d) => (d.type === item.type ? 0.2 : 0.05))
-            )
-            .alpha(0.5)
-            .restart();
-        });
-    });
-
-    // Añadir leyenda de tamaño de nodos
-    const sizeY = legendData.length * 25 + 40;
-
-    // Título para tamaños
-    legend
-      .append("text")
-      .attr("x", 10)
-      .attr("y", sizeY)
-      .attr("font-size", "10px")
-      .attr("font-weight", "500")
-      .attr("fill", "#4b5563")
-      .text("Tamaño = Consumo de energía");
-
-    // Ejemplos de tamaño
-    [5, 20, 50].forEach((value, i) => {
-      const x = 20 + i * 60;
-      const radius = Math.sqrt(value) * 0.8;
-
-      // Círculo para mostrar tamaño
-      legend
-        .append("circle")
-        .attr("cx", x)
-        .attr("cy", sizeY + 20)
-        .attr("r", radius)
-        .attr("fill", "#64748b")
-        .attr("fill-opacity", 0.5)
-        .attr("stroke", "#475569")
-        .attr("stroke-width", 1);
-
-      // Etiqueta de valor
-      legend
-        .append("text")
-        .attr("x", x)
-        .attr("y", sizeY + 35)
-        .attr("text-anchor", "middle")
-        .attr("font-size", "9px")
-        .attr("fill", "#4b5563")
-        .text(`${value} kW`);
-    });
-
-    // Panel de controles de layout
+    // Panel de controles de layout (movido a la esquina superior derecha)
     const controls = svg
       .append("g")
       .attr("transform", `translate(${width - 140}, 20)`)
@@ -1173,7 +990,7 @@ export default function NodeNetwork({ data }) {
       .attr("font-size", "11px")
       .attr("font-weight", "bold")
       .attr("fill", "#1f2937")
-      .text("Configuración");
+      .text("Layout");
 
     // Botones de layout
     const layoutButtons = [
@@ -1197,7 +1014,7 @@ export default function NodeNetwork({ data }) {
           } else {
             // Liberar todas las posiciones fijas
             processedNodes.forEach((node) => {
-              if (node.id !== "grid") {
+              if (node && node.id !== "grid") {
                 node.fx = null;
                 node.fy = null;
               }
@@ -1324,25 +1141,17 @@ export default function NodeNetwork({ data }) {
       svg.transition().duration(300).call(zoom.scaleBy, 0.7);
     });
 
-    // Atajos de teclado mejorados
+    // Atajos de teclado
     d3.select("body").on("keydown", (event) => {
       // Escape deselecciona nodo
       if (event.key === "Escape" && selectedNode) {
-        node
-          .filter((n) => n.id === selectedNode.id)
-          .transition()
-          .duration(config.animationDuration)
-          .attr("stroke", "#fff")
-          .attr("stroke-width", 1.5)
-          .attr("filter", "url(#shadow)");
-
-        setSelectedNode(null);
+        safelyDeselectNode();
       }
 
       // R reinicia la simulación
       if (event.key === "r") {
         nodes.forEach((d) => {
-          if (d.id !== "grid") {
+          if (d && d.id !== "grid") {
             d.fx = null;
             d.fy = null;
           }
@@ -1353,8 +1162,10 @@ export default function NodeNetwork({ data }) {
       // F fija todos los nodos en su posición actual
       if (event.key === "f") {
         nodes.forEach((d) => {
-          d.fx = d.x;
-          d.fy = d.y;
+          if (d) {
+            d.fx = d.x;
+            d.fy = d.y;
+          }
         });
       }
 
@@ -1370,7 +1181,7 @@ export default function NodeNetwork({ data }) {
       } else if (event.key === "3") {
         setLayoutMode("force");
         processedNodes.forEach((node) => {
-          if (node.id !== "grid") {
+          if (node && node.id !== "grid") {
             node.fx = null;
             node.fy = null;
           }
@@ -1400,15 +1211,98 @@ export default function NodeNetwork({ data }) {
   if (!data) return null;
 
   return (
-    <div className="flex flex-col w-full h-full bg-white shadow rounded-lg dark:bg-gray-800">
+    <div className="flex flex-col w-full h-full bg-white shadow rounded-lg dark:bg-gray-800 relative">
       <div className="flex justify-between items-center px-4 py-2 bg-gray-50 border-b dark:bg-gray-700 dark:border-gray-600 rounded-t-lg">
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">
           Red de Distribución Eléctrica
         </h3>
-        {selectedNode && (
-          <div className="bg-blue-50 px-3 py-1 rounded-full text-sm text-blue-800 flex items-center dark:bg-blue-900 dark:text-blue-200">
-            <span className="w-2 h-2 rounded-full bg-blue-500 mr-2"></span>
-            Nodo seleccionado: {selectedNode.name}
+        {/* Panel de información del nodo seleccionado - SOLO CUANDO HAY SELECCIÓN */}
+        {selectedNode && selectedNode.id && (
+          <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-4 max-w-xs z-20">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center">
+                <div
+                  className={`w-3 h-3 rounded-full mr-2 ${
+                    selectedNode.type === "grid"
+                      ? "bg-blue-500"
+                      : selectedNode.type === "home"
+                      ? "bg-green-500"
+                      : selectedNode.type === "business"
+                      ? "bg-orange-500"
+                      : "bg-red-500"
+                  }`}
+                ></div>
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {selectedNode.name || "Sin nombre"}
+                </h4>
+              </div>
+              <button
+                onClick={safelyDeselectNode}
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <svg
+                  className="w-4 h-4 text-gray-500 dark:text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <div className="text-gray-600 dark:text-gray-300">
+                {selectedNode.description || "Sin descripción disponible"}
+              </div>
+
+              {selectedNode.type !== "grid" && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">
+                      Consumo:
+                    </span>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {(selectedNode.consumption || 0).toFixed(1)} kW
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">
+                      Tipo:
+                    </span>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {selectedNode.type === "home"
+                        ? "Residencial"
+                        : selectedNode.type === "business"
+                        ? "Comercial"
+                        : "Industrial"}
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {selectedNode.type === "grid" && energyStats && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">
+                    Distribución total:
+                  </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {energyStats.total.totalConsumption.toFixed(1)} kW
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                💡 Haz clic en otro nodo para cambiar la selección
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1418,35 +1312,12 @@ export default function NodeNetwork({ data }) {
         ref={containerRef}
         style={{ minHeight: "600px" }}
       ></div>
-      <div className="flex justify-between items-center text-xs px-4 py-3 bg-gray-50 border-t dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 rounded-b-lg">
-        <div>
-          <span className="font-medium mr-1">Interacción:</span>
-          Haz clic en un nodo para seleccionarlo. Arrástralo para moverlo.
-          <span className="hidden sm:inline">
-            {" "}
-            Mantén Shift al soltar para fijarlo.
-          </span>
-        </div>
-        <div className="flex items-center space-x-3">
-          <button
-            className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded dark:bg-blue-900 dark:text-blue-200"
-            onClick={() => {
-              // Reiniciar simulación
-              if (window.networkSimulation) {
-                const nodes = window.networkSimulation.nodes();
-                nodes.forEach((d) => {
-                  if (d.id !== "grid") {
-                    d.fx = null;
-                    d.fy = null;
-                  }
-                });
-                window.networkSimulation.alpha(1).restart();
-              }
-            }}
-          >
-            Reiniciar
-          </button>
-        </div>
+      {/* Footer simplificado */}
+      <div className="flex justify-center items-center text-xs px-4 py-2 bg-gray-50 border-t dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 rounded-b-lg">
+        <span className="text-gray-500 dark:text-gray-400">
+          Haz clic en los nodos para ver detalles • Arrastra para mover • Usa
+          los controles para cambiar el layout
+        </span>
       </div>
     </div>
   );
