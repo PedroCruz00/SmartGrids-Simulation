@@ -41,46 +41,12 @@ export default function NodeNetwork({ data }) {
 
   // Función helper para deseleccionar nodo de manera segura
   const safelyDeselectNode = () => {
-    if (!selectedNode || !containerRef.current) {
-      setSelectedNode(null);
-      return;
-    }
+    setSelectedNode(null);
 
-    try {
-      // Restaurar el nodo seleccionado con validación
-      d3.select(containerRef.current)
-        .selectAll("path")
-        .filter((d) => d && d.id && selectedNode && d.id === selectedNode.id)
-        .transition()
-        .duration(config.animationDuration)
-        .attr("stroke", "#fff")
-        .attr("stroke-width", 1.5)
-        .attr("filter", "url(#shadow)");
-
-      // Restaurar todos los enlaces con validación
-      d3.select(containerRef.current)
-        .selectAll("line")
-        .filter((d) => d && d.type) // Solo procesar enlaces válidos
-        .transition()
-        .duration(config.animationDuration)
-        .attr("stroke-opacity", 0.7)
-        .attr("stroke-width", (d) => d.width || 1)
-        .attr("stroke", (l) => {
-          if (!l || !l.type) return "#999"; // Fallback color
-          const typeKey =
-            l.type === "home"
-              ? "Home"
-              : l.type === "business"
-              ? "Business"
-              : l.type === "industry"
-              ? "Industry"
-              : "";
-          return typeKey ? `url(#linkGradient${typeKey})` : "#999";
-        });
-    } catch (error) {
-      console.warn("Error al deseleccionar nodo:", error);
-    } finally {
-      setSelectedNode(null);
+    // Limpiar cualquier tooltip persistente
+    if (containerRef.current) {
+      // Remover todos los tooltips existentes
+      d3.select(containerRef.current).selectAll(".network-tooltip").remove();
     }
   };
 
@@ -110,6 +76,15 @@ export default function NodeNetwork({ data }) {
     updateSvgSize();
     window.addEventListener("resize", updateSvgSize);
     return () => window.removeEventListener("resize", updateSvgSize);
+  }, []);
+
+  // Limpiar tooltips cuando se desmonta el componente
+  useEffect(() => {
+    return () => {
+      if (containerRef.current) {
+        d3.select(containerRef.current).selectAll(".network-tooltip").remove();
+      }
+    };
   }, []);
 
   // Calcular estadísticas de energía
@@ -447,8 +422,9 @@ export default function NodeNetwork({ data }) {
   useEffect(() => {
     if (!nodes.length || !links.length || !containerRef.current) return;
 
-    // Limpiar cualquier SVG anterior
+    // Limpiar cualquier SVG anterior Y tooltips persistentes
     d3.select(containerRef.current).select("svg").remove();
+    d3.select(containerRef.current).selectAll(".network-tooltip").remove();
 
     // Obtener dimensiones del contenedor
     const width = containerRef.current.clientWidth;
@@ -722,22 +698,26 @@ export default function NodeNetwork({ data }) {
         "0 1px 0 #fff, 1px 0 0 #fff, 0 -1px 0 #fff, -1px 0 0 #fff"
       );
 
-    // Crear tooltip con más información
+    // Crear tooltip ÚNICO con clase específica
     const tooltip = d3
       .select(containerRef.current)
       .append("div")
       .attr(
         "class",
-        "absolute hidden bg-white p-3 rounded-lg shadow-lg text-sm z-10 dark:bg-gray-800 dark:text-white"
+        "network-tooltip absolute hidden bg-white p-3 rounded-lg shadow-lg text-sm z-10 dark:bg-gray-800 dark:text-white"
       )
       .style("pointer-events", "none")
-      .style("max-width", "220px")
-      .attr("ref", tooltipRef);
+      .style("max-width", "220px");
 
     // Mejorar eventos de interacción para nodos con validación
     node
       .on("mouseover", function (event, d) {
         if (!d) return;
+
+        // Limpiar cualquier tooltip anterior antes de mostrar uno nuevo
+        d3.select(containerRef.current)
+          .selectAll(".network-tooltip")
+          .classed("hidden", true);
 
         // Mostrar tooltip con diseño y más información
         tooltip
@@ -811,7 +791,7 @@ export default function NodeNetwork({ data }) {
       .on("mouseout", function (event, d) {
         if (!d) return;
 
-        // Ocultar tooltip
+        // Ocultar tooltip inmediatamente
         tooltip.classed("hidden", true);
 
         // Restaurar nodo (si no está seleccionado)
@@ -851,6 +831,11 @@ export default function NodeNetwork({ data }) {
         event.stopPropagation();
 
         if (!d || !d.id) return;
+
+        // Limpiar cualquier tooltip antes de mostrar el panel
+        d3.select(containerRef.current)
+          .selectAll(".network-tooltip")
+          .classed("hidden", true);
 
         // Si ya estaba seleccionado, deseleccionar
         if (selectedNode && selectedNode.id && selectedNode.id === d.id) {
@@ -1231,7 +1216,7 @@ export default function NodeNetwork({ data }) {
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">
           Red de Distribución Eléctrica
         </h3>
-        {/* Panel de información del nodo seleccionado */}
+        {/* Panel de información del nodo seleccionado - SOLO CUANDO HAY SELECCIÓN */}
         {selectedNode && selectedNode.id && (
           <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-4 max-w-xs z-20">
             <div className="flex items-start justify-between mb-3">
