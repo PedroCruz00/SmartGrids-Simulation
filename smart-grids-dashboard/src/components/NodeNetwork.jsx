@@ -1400,15 +1400,138 @@ export default function NodeNetwork({ data }) {
   if (!data) return null;
 
   return (
-    <div className="flex flex-col w-full h-full bg-white shadow rounded-lg dark:bg-gray-800">
+      <div className="flex flex-col w-full h-full bg-white shadow rounded-lg dark:bg-gray-800 relative">
       <div className="flex justify-between items-center px-4 py-2 bg-gray-50 border-b dark:bg-gray-700 dark:border-gray-600 rounded-t-lg">
         <h3 className="text-lg font-medium text-gray-900 dark:text-white">
           Red de Distribución Eléctrica
         </h3>
+        {/* Panel de información del nodo seleccionado - NUEVO */}
         {selectedNode && (
-          <div className="bg-blue-50 px-3 py-1 rounded-full text-sm text-blue-800 flex items-center dark:bg-blue-900 dark:text-blue-200">
-            <span className="w-2 h-2 rounded-full bg-blue-500 mr-2"></span>
-            Nodo seleccionado: {selectedNode.name}
+          <div className="absolute top-4 right-4 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-4 max-w-xs z-20">
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center">
+                <div
+                  className={`w-3 h-3 rounded-full mr-2 ${
+                    selectedNode.type === "grid"
+                      ? "bg-blue-500"
+                      : selectedNode.type === "home"
+                      ? "bg-green-500"
+                      : selectedNode.type === "business"
+                      ? "bg-orange-500"
+                      : "bg-red-500"
+                  }`}
+                ></div>
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {selectedNode.name}
+                </h4>
+              </div>
+              <button
+                onClick={() => {
+                  // Deseleccionar nodo y restaurar estilos
+                  if (window.networkSimulation) {
+                    const nodes = window.networkSimulation.nodes();
+                    const links = window.networkSimulation
+                      .force("link")
+                      .links();
+
+                    // Restaurar el nodo seleccionado
+                    d3.select(containerRef.current)
+                      .selectAll("path")
+                      .filter((d) => d.id === selectedNode.id)
+                      .transition()
+                      .duration(300)
+                      .attr("stroke", "#fff")
+                      .attr("stroke-width", 1.5)
+                      .attr("filter", "url(#shadow)");
+
+                    // Restaurar todos los enlaces
+                    d3.select(containerRef.current)
+                      .selectAll("line")
+                      .transition()
+                      .duration(300)
+                      .attr("stroke-opacity", 0.7)
+                      .attr("stroke-width", (d) => d.width)
+                      .attr("stroke", (l) => {
+                        const typeKey =
+                          l.type === "home"
+                            ? "Home"
+                            : l.type === "business"
+                            ? "Business"
+                            : l.type === "industry"
+                            ? "Industry"
+                            : "";
+                        return typeKey
+                          ? `url(#linkGradient${typeKey})`
+                          : `url(#linkGradient)`;
+                      });
+                  }
+                  setSelectedNode(null);
+                }}
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+              >
+                <svg
+                  className="w-4 h-4 text-gray-500 dark:text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-2 text-sm">
+              <div className="text-gray-600 dark:text-gray-300">
+                {selectedNode.description || "Sin descripción disponible"}
+              </div>
+
+              {selectedNode.type !== "grid" && (
+                <>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">
+                      Consumo:
+                    </span>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {selectedNode.consumption?.toFixed(1) || 0} kW
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 dark:text-gray-400">
+                      Tipo:
+                    </span>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {selectedNode.type === "home"
+                        ? "Residencial"
+                        : selectedNode.type === "business"
+                        ? "Comercial"
+                        : "Industrial"}
+                    </span>
+                  </div>
+                </>
+              )}
+
+              {selectedNode.type === "grid" && energyStats && (
+                <div className="flex justify-between">
+                  <span className="text-gray-500 dark:text-gray-400">
+                    Distribución total:
+                  </span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {energyStats.total.totalConsumption.toFixed(1)} kW
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-600">
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                💡 Haz clic en otro nodo para cambiar la selección
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -1419,19 +1542,24 @@ export default function NodeNetwork({ data }) {
         style={{ minHeight: "600px" }}
       ></div>
       <div className="flex justify-between items-center text-xs px-4 py-3 bg-gray-50 border-t dark:bg-gray-700 dark:border-gray-600 dark:text-gray-300 rounded-b-lg">
-        <div>
-          <span className="font-medium mr-1">Interacción:</span>
-          Haz clic en un nodo para seleccionarlo. Arrástralo para moverlo.
-          <span className="hidden sm:inline">
-            {" "}
-            Mantén Shift al soltar para fijarlo.
+        <div className="flex items-center space-x-4">
+          <span className="font-medium">Interacción:</span>
+          <span>Clic = Seleccionar nodo</span>
+          <span className="hidden sm:inline">• Arrastrar = Mover</span>
+          <span className="hidden md:inline">
+            • Shift+soltar = Fijar posición
           </span>
         </div>
         <div className="flex items-center space-x-3">
+          {selectedNode && (
+            <div className="flex items-center bg-blue-100 dark:bg-blue-900 px-2 py-1 rounded text-blue-800 dark:text-blue-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1"></span>
+              <span className="text-xs font-medium">{selectedNode.name}</span>
+            </div>
+          )}
           <button
-            className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded dark:bg-blue-900 dark:text-blue-200"
+            className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded dark:bg-blue-900 dark:text-blue-200 hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
             onClick={() => {
-              // Reiniciar simulación
               if (window.networkSimulation) {
                 const nodes = window.networkSimulation.nodes();
                 nodes.forEach((d) => {
